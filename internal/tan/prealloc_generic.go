@@ -17,12 +17,11 @@
 // limitations under the License.
 
 //go:build !linux
-// +build !linux
 
 package tan
 
 import (
-	"github.com/lni/vfs"
+	"github.com/cockroachdb/pebble/v2/vfs"
 )
 
 func prealloc(f vfs.File, size int64) error {

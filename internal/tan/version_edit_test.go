@@ -135,7 +135,7 @@ func TestVersionEditDecode(t *testing.T) {
 			i, r := 0, NewReader(f, 0)
 			for {
 				rr, err := r.Next()
-				if err == io.EOF {
+				if errors.Is(err, io.EOF) {
 					break
 				}
 				if err != nil {

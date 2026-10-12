@@ -29,11 +29,12 @@ func TestVFSSync(t *testing.T) {
 	err := MkdirAll("/dragonboat-test-data/data", fs)
 	require.NoError(t, err, "failed to mkdir")
 
-	ffs, ok := fs.(*vfs.MemFS)
+	_, ok := fs.(*vfs.MemFS)
 	require.True(t, ok, "not a memfs")
 
-	ffs.ResetToSyncedState()
-
+	// upstream pebble memfs has no equivalent of the strict memfs
+	// ResetToSyncedState crash-reset API previously used here, directories
+	// created by MkdirAll are expected to remain accessible
 	ok, err = DirExist("/dragonboat-test-data", fs)
 	require.NoError(t, err, "failed to check exist")
 	require.True(t, ok, "test dir disappeared")

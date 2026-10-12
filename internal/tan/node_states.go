@@ -18,9 +18,9 @@ import (
 	"bufio"
 	"bytes"
 
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/lni/dragonboat/v4/raftio"
 	pb "github.com/lni/dragonboat/v4/raftpb"
-	"github.com/lni/vfs"
 )
 
 type nodeStates struct {
@@ -73,7 +73,7 @@ func (s *nodeStates) save(dirname string,
 	dir vfs.File, fileNum fileNum, fs vfs.FS) (err error) {
 	tmpFn := makeFilename(fs, dirname, fileTypeIndexTemp, fileNum)
 	fn := makeFilename(fs, dirname, fileTypeIndex, fileNum)
-	file, err := fs.Create(tmpFn)
+	file, err := fs.Create(tmpFn, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		return err
 	}
@@ -158,7 +158,7 @@ func (s *nodeStates) load(dirname string, fn fileNum, fs vfs.FS) (err error) {
 	if err != nil {
 		return err
 	}
-	for i := uint64(0); i < sz; i++ {
+	for range sz {
 		var entries index
 		var snapshots index
 		var state index

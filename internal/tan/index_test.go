@@ -22,8 +22,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	dvfs "github.com/lni/dragonboat/v4/internal/vfs"
 	"github.com/lni/dragonboat/v4/raftio"
-	"github.com/lni/vfs"
 )
 
 func TestEntryAppend(t *testing.T) {
@@ -855,7 +855,7 @@ func TestIndexSaveLoad(t *testing.T) {
 	nodeStates := newNodeStates()
 	nodeStates.indexes[ni1] = i1
 	nodeStates.indexes[ni2] = i2
-	fs := vfs.NewMem()
+	fs := dvfs.NewMemFS()
 	dirname := "db-dir"
 	require.NoError(t, fs.MkdirAll(dirname, 0755))
 	dir, err := fs.OpenDir(dirname)
@@ -892,7 +892,7 @@ func TestIndexLoadIsAppendOnly(t *testing.T) {
 	nodeStates := newNodeStates()
 	nodeStates.indexes[ni1] = i
 	currEntries := i.currEntries
-	fs := vfs.NewMem()
+	fs := dvfs.NewMemFS()
 	dirname := "db-dir"
 	require.NoError(t, fs.MkdirAll(dirname, 0700))
 	dir, err := fs.OpenDir(dirname)

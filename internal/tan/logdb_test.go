@@ -22,10 +22,11 @@ import (
 	"os/exec"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/lni/dragonboat/v4/config"
+	dvfs "github.com/lni/dragonboat/v4/internal/vfs"
 	pb "github.com/lni/dragonboat/v4/raftpb"
 	"github.com/lni/goutils/leaktest"
-	"github.com/lni/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -99,7 +100,7 @@ func TestListNodeInfo(t *testing.T) {
 func TestLogDBCanBeCreated(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	cfg := config.NodeHostConfig{
-		Expert: config.ExpertConfig{FS: vfs.NewMem()},
+		Expert: config.ExpertConfig{FS: dvfs.NewMemFS()},
 	}
 	require.NoError(t, cfg.Prepare())
 	dirs := []string{"db-dir"}
@@ -112,7 +113,7 @@ func TestLogDBCanBeCreated(t *testing.T) {
 func TestSaveSnapshots(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	cfg := config.NodeHostConfig{
-		Expert: config.ExpertConfig{FS: vfs.NewMem()},
+		Expert: config.ExpertConfig{FS: dvfs.NewMemFS()},
 	}
 	require.NoError(t, cfg.Prepare())
 	dirs := []string{"db-dir"}
@@ -143,7 +144,7 @@ func TestSaveSnapshots(t *testing.T) {
 func TestSaveRaftState(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	cfg := config.NodeHostConfig{
-		Expert: config.ExpertConfig{FS: vfs.NewMem()},
+		Expert: config.ExpertConfig{FS: dvfs.NewMemFS()},
 	}
 	require.NoError(t, cfg.Prepare())
 	dirs := []string{"db-dir"}
@@ -154,7 +155,7 @@ func TestSaveRaftState(t *testing.T) {
 			ShardID:   1,
 			ReplicaID: 1,
 			Snapshot:  pb.Snapshot{Index: 100, Term: 10},
-			State:     pb.State{Commit: 100, Term: 10},
+			Commit:    100, Term: 10,
 			EntriesToSave: []pb.Entry{
 				{Index: 99, Term: 10},
 				{Index: 100, Term: 10},
@@ -164,7 +165,7 @@ func TestSaveRaftState(t *testing.T) {
 			ShardID:   17,
 			ReplicaID: 1,
 			Snapshot:  pb.Snapshot{Index: 200, Term: 10},
-			State:     pb.State{Commit: 200, Term: 10},
+			Commit:    200, Term: 10,
 			EntriesToSave: []pb.Entry{
 				{Index: 198, Term: 10},
 				{Index: 199, Term: 10},
@@ -195,7 +196,7 @@ func TestSaveRaftState(t *testing.T) {
 func TestConcurrentSaveRaftState(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	cfg := config.NodeHostConfig{
-		Expert: config.ExpertConfig{FS: vfs.NewMem()},
+		Expert: config.ExpertConfig{FS: dvfs.NewMemFS()},
 	}
 	require.NoError(t, cfg.Prepare())
 	dirs := []string{"db-dir"}
@@ -204,13 +205,13 @@ func TestConcurrentSaveRaftState(t *testing.T) {
 	defer func() {
 		require.NoError(t, ldb.Close())
 	}()
-	for i := uint64(0); i < 16; i++ {
+	for i := range uint64(16) {
 		updates := []pb.Update{
 			{
 				ShardID:   1,
 				ReplicaID: 1,
 				Snapshot:  pb.Snapshot{Index: i * uint64(100), Term: 10},
-				State:     pb.State{Commit: i * uint64(100), Term: 10},
+				Commit:    i * uint64(100), Term: 10,
 				EntriesToSave: []pb.Entry{
 					{Index: i*2 + 1, Term: 10},
 					{Index: i*2 + 2, Term: 10},
@@ -220,7 +221,7 @@ func TestConcurrentSaveRaftState(t *testing.T) {
 				ShardID:   17,
 				ReplicaID: 1,
 				Snapshot:  pb.Snapshot{Index: i * uint64(200), Term: 20},
-				State:     pb.State{Commit: i * uint64(200), Term: 20},
+				Commit:    i * uint64(200), Term: 20,
 				EntriesToSave: []pb.Entry{
 					{Index: i*3 + 1, Term: 20},
 					{Index: i*3 + 2, Term: 20},
@@ -230,13 +231,13 @@ func TestConcurrentSaveRaftState(t *testing.T) {
 		}
 		require.NoError(t, ldb.SaveRaftState(updates, 1))
 	}
-	for i := uint64(0); i < 16; i++ {
+	for i := range uint64(16) {
 		updates := []pb.Update{
 			{
 				ShardID:   2,
 				ReplicaID: 1,
 				Snapshot:  pb.Snapshot{Index: i * uint64(100), Term: 30},
-				State:     pb.State{Commit: i * uint64(100), Term: 30},
+				Commit:    i * uint64(100), Term: 30,
 				EntriesToSave: []pb.Entry{
 					{Index: i*2 + 1, Term: 30},
 					{Index: i*2 + 2, Term: 30},
@@ -246,7 +247,7 @@ func TestConcurrentSaveRaftState(t *testing.T) {
 				ShardID:   18,
 				ReplicaID: 1,
 				Snapshot:  pb.Snapshot{Index: i * uint64(100), Term: 40},
-				State:     pb.State{Commit: i * uint64(100), Term: 40},
+				Commit:    i * uint64(100), Term: 40,
 				EntriesToSave: []pb.Entry{
 					{Index: i * 3, Term: 40},
 					{Index: i*3 + 1, Term: 40},

@@ -13,7 +13,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
+	"math/rand/v2"
 )
 
 func short(s string) string {
@@ -74,7 +74,7 @@ func testGeneratorWriter(
 			t.Fatalf("got %q, want %q", short(string(x)), short(s))
 		}
 	}
-	if _, err := r.next(); err != io.EOF {
+	if _, err := r.next(); !errors.Is(err, io.EOF) {
 		t.Fatalf("got %v, want %v", err, io.EOF)
 	}
 }
@@ -125,14 +125,14 @@ func TestRandom(t *testing.T) {
 		r *rand.Rand
 	)
 	reset := func() {
-		i, r = 0, rand.New(rand.NewSource(0))
+		i, r = 0, rand.New(rand.NewPCG(0, 0))
 	}
 	gen := func() (string, bool) {
 		if i == n {
 			return "", false
 		}
 		i++
-		return strings.Repeat(string(uint8(i)), r.Intn(2*blockSize+16)), true
+		return strings.Repeat(string(uint8(i)), r.IntN(2*blockSize+16)), true
 	}
 	testGenerator(t, reset, gen)
 }
@@ -226,11 +226,11 @@ func TestNonExhaustiveRead(t *testing.T) {
 	const n = 100
 	buf := new(bytes.Buffer)
 	p := make([]byte, 10)
-	rnd := rand.New(rand.NewSource(1))
+	rnd := rand.New(rand.NewPCG(1, 0))
 
 	w := newWriter(buf)
-	for i := 0; i < n; i++ {
-		length := len(p) + rnd.Intn(3*blockSize)
+	for i := range n {
+		length := len(p) + rnd.IntN(3*blockSize)
 		s := string(uint8(i)) + "123456789abcdefgh"
 		_, _ = w.writeRecord([]byte(big(s, length)))
 	}
@@ -239,7 +239,7 @@ func TestNonExhaustiveRead(t *testing.T) {
 	}
 
 	r := newReader(buf, 0 /* logNum */)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		rr, _ := r.next()
 		_, err := io.ReadFull(rr, p)
 		if err != nil {
@@ -564,7 +564,7 @@ func verifyLastBlockRecover(recs *testRecords) error {
 			}
 			r.recover()
 		case len(recs.records):
-			if err != io.EOF {
+			if !errors.Is(err, io.EOF) {
 				return errors.Errorf("Expected io.EOF, got %v", err)
 			}
 		default:
@@ -797,8 +797,8 @@ func TestSize(t *testing.T) {
 	var buf bytes.Buffer
 	zeroes := make([]byte, 8<<10)
 	w := newWriter(&buf)
-	for i := 0; i < 100; i++ {
-		n := rand.Intn(len(zeroes))
+	for range 100 {
+		n := rand.IntN(len(zeroes))
 		_, err := w.writeRecord(zeroes[:n])
 		require.NoError(t, err)
 		require.NoError(t, w.flush())

@@ -15,8 +15,9 @@
 package id
 
 import (
+	"uuid"
+
 	"github.com/cockroachdb/errors"
-	"github.com/google/uuid"
 
 	pb "github.com/lni/dragonboat/v4/raftpb"
 )
@@ -52,21 +53,23 @@ func (u UUID) String() string {
 }
 
 func (u *UUID) Marshal() ([]byte, error) {
-	return u.v.MarshalBinary()
+	v := make([]byte, len(u.v))
+	copy(v, u.v[:])
+	return v, nil
 }
 
 func (u *UUID) MarshalTo(data []byte) (int, error) {
-	v, err := u.v.MarshalBinary()
-	if err != nil {
-		return 0, err
-	}
-	if len(data) < len(v) {
+	if len(data) < len(u.v) {
 		return 0, errors.New("input slice too short")
 	}
-	copy(data, v)
-	return len(v), nil
+	copy(data, u.v[:])
+	return len(u.v), nil
 }
 
 func (u *UUID) Unmarshal(data []byte) error {
-	return u.v.UnmarshalBinary(data)
+	if len(data) != len(u.v) {
+		return errors.New("invalid UUID length")
+	}
+	copy(u.v[:], data)
+	return nil
 }

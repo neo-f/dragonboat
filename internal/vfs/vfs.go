@@ -15,139 +15,62 @@
 package vfs
 
 import (
-	"io"
 	"os"
 	"path/filepath"
-	"testing"
 
 	"github.com/cockroachdb/errors/oserror"
-	pvfs "github.com/cockroachdb/pebble/vfs"
-
-	gvfs "github.com/lni/vfs"
+	pvfs "github.com/cockroachdb/pebble/v2/vfs"
 )
 
 // IFS is the vfs interface used by dragonboat.
-type IFS = gvfs.FS
-
-// MemFS is a memory backed file system for testing purposes.
-type MemFS = gvfs.MemFS
-
-// DefaultFS is a vfs instance using underlying OS fs.
-var DefaultFS IFS = gvfs.Default
-
-// MemStrictFS is a vfs instance using memfs.
-var MemStrictFS IFS = gvfs.NewStrictMem()
+type IFS = pvfs.FS
 
 // File is the file interface returned by IFS.
-type File = gvfs.File
+type File = pvfs.File
+
+// WriteCategoryUnspecified denotes a disk write without a significant
+// category.
+const WriteCategoryUnspecified = pvfs.WriteCategoryUnspecified
+
+// DefaultFS is a vfs instance using underlying OS fs.
+var DefaultFS IFS = pvfs.Default
+
+// MemStrictFS is a vfs instance using memfs.
+var MemStrictFS IFS = NewMemFS()
 
 // NewMemFS creates a in-memory fs.
 func NewMemFS() IFS {
-	return gvfs.NewStrictMem()
+	return newMemFS()
 }
 
-// PebbleFS is a wrapper struct that implements the pebble/vfs.FS interface.
-type PebbleFS struct {
-	fs IFS
-}
-
-var _ pvfs.FS = (*PebbleFS)(nil)
-
-// NewPebbleFS creates a new pebble/vfs.FS instance.
-func NewPebbleFS(fs IFS) pvfs.FS {
-	return &PebbleFS{fs}
-}
-
-// GetDiskUsage ...
-func (p *PebbleFS) GetDiskUsage(path string) (pvfs.DiskUsage, error) {
-	du, err := p.fs.GetDiskUsage(path)
-	return pvfs.DiskUsage{
-		AvailBytes: du.AvailBytes,
-		TotalBytes: du.TotalBytes,
-		UsedBytes:  du.UsedBytes,
-	}, err
-}
-
-// Create ...
-func (p *PebbleFS) Create(name string) (pvfs.File, error) {
-	return p.fs.Create(name)
-}
-
-// Link ...
-func (p *PebbleFS) Link(oldname, newname string) error {
-	return p.fs.Link(oldname, newname)
-}
-
-// Open ...
-func (p *PebbleFS) Open(name string, opts ...pvfs.OpenOption) (pvfs.File, error) {
-	f, err := p.fs.Open(name)
+// OpenForAppend opens the named file for appending. The returned file
+// provides single-writer sequential-append semantics, Write calls are
+// translated into WriteAt calls at the advancing end of the file.
+func OpenForAppend(fs IFS, name string) (File, error) {
+	f, err := fs.OpenReadWrite(name, WriteCategoryUnspecified)
 	if err != nil {
 		return nil, err
 	}
-	for _, opt := range opts {
-		opt.Apply(f)
+	fi, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return nil, err
 	}
-	return f, nil
+	return &appendFile{File: f, offset: fi.Size()}, nil
 }
 
-// OpenDir ...
-func (p *PebbleFS) OpenDir(name string) (pvfs.File, error) {
-	return p.fs.OpenDir(name)
+// appendFile is a File wrapper providing single-writer sequential-append
+// semantics on top of a regular read-write file.
+type appendFile struct {
+	File
+	offset int64
 }
 
-// Remove ...
-func (p *PebbleFS) Remove(name string) error {
-	return p.fs.Remove(name)
-}
-
-// RemoveAll ...
-func (p *PebbleFS) RemoveAll(name string) error {
-	return p.fs.RemoveAll(name)
-}
-
-// Rename ...
-func (p *PebbleFS) Rename(oldname, newname string) error {
-	return p.fs.Rename(oldname, newname)
-}
-
-// ReuseForWrite ...
-func (p *PebbleFS) ReuseForWrite(oldname, newname string) (pvfs.File, error) {
-	return p.fs.ReuseForWrite(oldname, newname)
-}
-
-// MkdirAll ...
-func (p *PebbleFS) MkdirAll(dir string, perm os.FileMode) error {
-	return p.fs.MkdirAll(dir, perm)
-}
-
-// Lock ...
-func (p *PebbleFS) Lock(name string) (io.Closer, error) {
-	return p.fs.Lock(name)
-}
-
-// List ...
-func (p *PebbleFS) List(dir string) ([]string, error) {
-	return p.fs.List(dir)
-}
-
-// Stat ...
-func (p *PebbleFS) Stat(name string) (os.FileInfo, error) {
-	return p.fs.Stat(name)
-}
-
-// PathBase ...
-func (p *PebbleFS) PathBase(path string) string {
-	return p.fs.PathBase(path)
-}
-
-// PathJoin ...
-func (p *PebbleFS) PathJoin(elem ...string) string {
-	return p.fs.PathJoin(elem...)
-}
-
-// PathDir ...
-func (p *PebbleFS) PathDir(path string) string {
-	return p.fs.PathDir(path)
+// Write appends the specified data to the end of the file.
+func (f *appendFile) Write(p []byte) (int, error) {
+	n, err := f.WriteAt(p, f.offset)
+	f.offset += int64(n)
+	return n, err
 }
 
 // IsNotExist returns a boolean value indicating whether the specified error is
@@ -170,9 +93,4 @@ func TempDir() string {
 // Clean is a wrapper for filepath.Clean.
 func Clean(dir string) string {
 	return filepath.Clean(dir)
-}
-
-// ReportLeakedFD reports leaked file fds.
-func ReportLeakedFD(fs IFS, t *testing.T) {
-	gvfs.ReportLeakedFD(fs, t)
 }

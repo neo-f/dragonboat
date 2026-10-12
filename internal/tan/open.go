@@ -19,10 +19,12 @@
 package tan
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
+	"github.com/cockroachdb/pebble/v2/vfs"
 	pb "github.com/lni/dragonboat/v4/raftpb"
 	"github.com/lni/goutils/syncutil"
 )
@@ -95,9 +97,7 @@ func open(name string, dirname string, opts *Options) (*db, error) {
 		switch ft {
 		case fileTypeLog:
 			if _, ok := currentVersion.files[fn]; ok {
-				if fn > lastLogNum {
-					lastLogNum = fn
-				}
+				lastLogNum = max(lastLogNum, fn)
 				logFiles[fn] = fileNumAndName{fn, filename}
 			}
 		case fileTypeLogTemp:
@@ -116,8 +116,8 @@ func open(name string, dirname string, opts *Options) (*db, error) {
 			}
 		}
 	}
-	sort.Slice(indexFiles, func(i, j int) bool {
-		return indexFiles[i].num < indexFiles[j].num
+	slices.SortFunc(indexFiles, func(a, b fileNumAndName) int {
+		return cmp.Compare(a.num, b.num)
 	})
 	for _, indexFile := range indexFiles {
 		if _, ok := logFiles[indexFile.num]; !ok {
@@ -176,7 +176,7 @@ func (d *db) createNewLog() error {
 	}
 	logNum := d.mu.versions.getNextFileNum()
 	logName := makeFilename(d.opts.FS, d.dirname, fileTypeLog, logNum)
-	logFile, err := d.opts.FS.Create(logName)
+	logFile, err := d.opts.FS.Create(logName, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		return err
 	}
@@ -225,7 +225,7 @@ func (d *db) rebuildLog(logNum fileNum) (err error) {
 	// the last broken chunk or block.
 	fn := makeFilename(d.opts.FS, d.dirname, fileTypeLogTemp, logNum)
 	ln := makeFilename(d.opts.FS, d.dirname, fileTypeLog, logNum)
-	f, err := d.opts.FS.Create(fn)
+	f, err := d.opts.FS.Create(fn, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		return err
 	}

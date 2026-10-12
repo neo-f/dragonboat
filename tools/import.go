@@ -22,6 +22,7 @@ tools for managing Dragonboat based applications.
 import (
 	"bytes"
 	"io"
+	"maps"
 	"os"
 	"runtime"
 	"strings"
@@ -406,9 +407,7 @@ func getProcessedSnapshotRecord(dstDir string,
 	for nid := range old.Membership.Removed {
 		ss.Membership.Removed[nid] = true
 	}
-	for nid, addr := range members {
-		ss.Membership.Addresses[nid] = addr
-	}
+	maps.Copy(ss.Membership.Addresses, members)
 	return ss
 }
 
@@ -444,7 +443,7 @@ func copyFile(src string, dst string, fs vfs.IFS) (err error) {
 	if err != nil {
 		return err
 	}
-	out, err := fs.Create(dst)
+	out, err := fs.Create(dst, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		return err
 	}
@@ -452,7 +451,7 @@ func copyFile(src string, dst string, fs vfs.IFS) (err error) {
 		err = firstError(err, out.Close())
 	}()
 	if runtime.GOOS != "windows" {
-		of, ok := out.(*os.File)
+		of, ok := out.(interface{ Chmod(os.FileMode) error })
 		if ok {
 			if err := of.Chmod(fi.Mode()); err != nil {
 				return err

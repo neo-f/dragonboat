@@ -26,11 +26,11 @@ import (
 	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/lni/dragonboat/v4/logger"
 	"github.com/lni/dragonboat/v4/raftio"
 	pb "github.com/lni/dragonboat/v4/raftpb"
 	"github.com/lni/goutils/syncutil"
-	"github.com/lni/vfs"
 )
 
 var (
@@ -327,11 +327,17 @@ func (d *db) readLog(ie indexEntry,
 	defer func() {
 		err = firstError(err, f.Close())
 	}()
-	rr := newReader(f, ie.fileNum)
+	var rr *reader
 	if ie.pos > 0 {
+		// upstream pebble memfs files don't implement io.Seeker, use a
+		// ReadAt based reader tracking the offset itself so seekRecord
+		// works on all IFS implementations
+		rr = newReader(&offsetReadSeeker{ra: f}, ie.fileNum)
 		if err := rr.seekRecord(ie.pos); err != nil {
 			return errors.WithStack(err)
 		}
+	} else {
+		rr = newReader(f, ie.fileNum)
 	}
 	var buf bytes.Buffer
 	var r io.Reader
@@ -339,13 +345,13 @@ func (d *db) readLog(ie indexEntry,
 		offset := rr.offset()
 		r, err = rr.next()
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				return nil
 			}
 			return errors.WithStack(err)
 		}
 		if _, err = io.Copy(&buf, r); err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				return nil
 			}
 			return errors.Wrap(err, "error when reading WAL")
@@ -358,4 +364,32 @@ func (d *db) readLog(ie indexEntry,
 		buf.Reset()
 	}
 	return nil
+}
+
+// offsetReadSeeker adapts an io.ReaderAt into an io.ReadSeeker by tracking
+// the read offset itself, it allows record readers to seek on files that
+// don't implement io.Seeker, e.g. upstream pebble memfs files. Seek is only
+// supported with io.SeekStart and io.SeekCurrent as that is all the record
+// reader requires.
+type offsetReadSeeker struct {
+	ra  io.ReaderAt
+	off int64
+}
+
+func (r *offsetReadSeeker) Read(p []byte) (int, error) {
+	n, err := r.ra.ReadAt(p, r.off)
+	r.off += int64(n)
+	return n, err
+}
+
+func (r *offsetReadSeeker) Seek(offset int64, whence int) (int64, error) {
+	switch whence {
+	case io.SeekStart:
+		r.off = offset
+	case io.SeekCurrent:
+		r.off += offset
+	default:
+		return 0, errors.New("whence not supported")
+	}
+	return r.off, nil
 }

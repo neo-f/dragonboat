@@ -21,8 +21,9 @@ package tan
 import (
 	"testing"
 
-	"github.com/lni/vfs"
 	"github.com/stretchr/testify/require"
+
+	dvfs "github.com/lni/dragonboat/v4/internal/vfs"
 )
 
 func TestParseFilename(t *testing.T) {
@@ -42,7 +43,7 @@ func TestParseFilename(t *testing.T) {
 		{fileTypeTemp, fileNum(10), true, false},
 	}
 
-	fs := vfs.NewMem()
+	fs := dvfs.NewMemFS()
 	dbdir := "db-dir"
 	for idx, tt := range tests {
 		fn := makeFilename(fs, dbdir, tt.fileType, tt.fileNum)
@@ -56,7 +57,7 @@ func TestParseFilename(t *testing.T) {
 }
 
 func TestMakeBootstrapFilename(t *testing.T) {
-	fs := vfs.NewMem()
+	fs := dvfs.NewMemFS()
 	dbdir := "db-dir"
 	fn := makeBootstrapFilename(fs, dbdir, 2, 3, false)
 	require.Equal(t, "db-dir/BOOTSTRAP-2-3", fn)

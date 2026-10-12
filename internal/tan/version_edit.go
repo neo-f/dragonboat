@@ -72,7 +72,7 @@ func (v *versionEdit) decode(r io.Reader) error {
 	d := versionEditDecoder{br}
 	for {
 		tag, err := binary.ReadUvarint(br)
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
@@ -149,7 +149,7 @@ func (d versionEditDecoder) readfileNum() (fileNum, error) {
 func (d versionEditDecoder) readUvarint() (uint64, error) {
 	u, err := binary.ReadUvarint(d)
 	if err != nil {
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return 0, errCorruptManifest
 		}
 		return 0, err

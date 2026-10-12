@@ -25,15 +25,16 @@ import (
 
 	"github.com/cockroachdb/errors/oserror"
 
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/lni/dragonboat/v4/config"
+	dvfs "github.com/lni/dragonboat/v4/internal/vfs"
 	pb "github.com/lni/dragonboat/v4/raftpb"
 	"github.com/lni/goutils/leaktest"
-	"github.com/lni/vfs"
 	"github.com/stretchr/testify/require"
 )
 
 func TestRemoveEntries(t *testing.T) {
-	fs := vfs.NewMem()
+	fs := dvfs.NewMemFS()
 	opts := &Options{
 		MaxLogFileSize:      1,
 		MaxManifestFileSize: MaxManifestFileSize,
@@ -45,7 +46,7 @@ func TestRemoveEntries(t *testing.T) {
 			u := pb.Update{
 				ShardID:       2,
 				ReplicaID:     3,
-				State:         pb.State{Commit: i},
+				Commit:        i,
 				EntriesToSave: []pb.Entry{{Index: i, Term: 1}},
 			}
 			_, err := db.write(u, buf)
@@ -70,7 +71,7 @@ func TestRemoveEntries(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 0, len(entries1))
 
-		for j := 0; j < 3000; j++ {
+		for range 3000 {
 			ls, err := db.opts.FS.List(db.dirname)
 			require.NoError(t, err)
 			noObsolete := true
@@ -99,7 +100,7 @@ func TestRemoveEntries(t *testing.T) {
 func TestRemovedEntriesMultiplexedLogSetup(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	cfg := config.NodeHostConfig{
-		Expert: config.ExpertConfig{FS: vfs.NewMem()},
+		Expert: config.ExpertConfig{FS: dvfs.NewMemFS()},
 	}
 	require.NoError(t, cfg.Prepare())
 	dirs := []string{"db-dir"}
@@ -108,13 +109,13 @@ func TestRemovedEntriesMultiplexedLogSetup(t *testing.T) {
 	defer func() {
 		require.NoError(t, ldb.Close())
 	}()
-	for i := uint64(0); i < 16; i++ {
+	for i := range uint64(16) {
 		updates := []pb.Update{
 			{
 				ShardID:   1,
 				ReplicaID: 1,
 				Snapshot:  pb.Snapshot{Index: i * uint64(100), Term: 10},
-				State:     pb.State{Commit: i * uint64(100), Term: 10},
+				Commit:    i * uint64(100), Term: 10,
 				EntriesToSave: []pb.Entry{
 					{Index: i*2 + 1, Term: 10},
 					{Index: i*2 + 2, Term: 10},
@@ -124,7 +125,7 @@ func TestRemovedEntriesMultiplexedLogSetup(t *testing.T) {
 				ShardID:   17,
 				ReplicaID: 1,
 				Snapshot:  pb.Snapshot{Index: i * uint64(200), Term: 20},
-				State:     pb.State{Commit: i * uint64(200), Term: 20},
+				Commit:    i * uint64(200), Term: 20,
 				EntriesToSave: []pb.Entry{
 					{Index: i*3 + 1, Term: 20},
 					{Index: i*3 + 2, Term: 20},
@@ -156,7 +157,7 @@ func TestRemovedEntriesMultiplexedLogSetup(t *testing.T) {
 }
 
 func TestRemoveAll(t *testing.T) {
-	fs := vfs.NewMem()
+	fs := dvfs.NewMemFS()
 	opts := &Options{
 		MaxLogFileSize:      1024,
 		MaxManifestFileSize: MaxManifestFileSize,
@@ -166,11 +167,9 @@ func TestRemoveAll(t *testing.T) {
 		u := pb.Update{
 			ShardID:   2,
 			ReplicaID: 3,
-			State: pb.State{
-				Commit: 100,
-				Term:   5,
-				Vote:   3,
-			},
+			Commit:    100,
+			Term:      5,
+			Vote:      3,
 			Snapshot: pb.Snapshot{
 				Index: 100,
 				Term:  5,
@@ -186,7 +185,7 @@ func TestRemoveAll(t *testing.T) {
 			require.NoError(t, err)
 		}
 		require.NoError(t, db.removeAll(2, 3))
-		for i := 0; i < 3000; i++ {
+		for range 3000 {
 			ls, err := db.opts.FS.List(db.dirname)
 			require.NoError(t, err)
 			unexpectedFile := false
@@ -215,7 +214,7 @@ func TestRemoveAll(t *testing.T) {
 }
 
 func TestInstallSnapshot(t *testing.T) {
-	fs := vfs.NewMem()
+	fs := dvfs.NewMemFS()
 	opts := &Options{
 		MaxLogFileSize:      1024,
 		MaxManifestFileSize: MaxManifestFileSize,
@@ -225,11 +224,9 @@ func TestInstallSnapshot(t *testing.T) {
 		u := pb.Update{
 			ShardID:   2,
 			ReplicaID: 3,
-			State: pb.State{
-				Commit: 100,
-				Term:   5,
-				Vote:   3,
-			},
+			Commit:    100,
+			Term:      5,
+			Vote:      3,
 			Snapshot: pb.Snapshot{
 				Index: 101,
 				Term:  5,
@@ -269,16 +266,16 @@ func TestInstallSnapshot(t *testing.T) {
 }
 
 func TestScanObsoleteFiles(t *testing.T) {
-	fs := vfs.NewMem()
+	fs := dvfs.NewMemFS()
 	var dbdir string
 	tf := func(t *testing.T, db *db) { dbdir = db.dirname }
 	runTanTest(t, nil, tf, fs)
 	manifestFn := "MANIFEST-1000"
 	logFn := "10001.log"
-	f, err := fs.Create(fs.PathJoin(dbdir, manifestFn))
+	f, err := fs.Create(fs.PathJoin(dbdir, manifestFn), vfs.WriteCategoryUnspecified)
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
-	f, err = fs.Create(fs.PathJoin(dbdir, logFn))
+	f, err = fs.Create(fs.PathJoin(dbdir, logFn), vfs.WriteCategoryUnspecified)
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
 	runTanTest(t, nil, tf, fs)

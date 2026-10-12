@@ -20,9 +20,9 @@ import (
 
 	"github.com/cockroachdb/errors/oserror"
 
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/lni/dragonboat/v4/raftio"
 	pb "github.com/lni/dragonboat/v4/raftpb"
-	"github.com/lni/vfs"
 )
 
 // getBootstrap returns saved bootstrap record. Bootstrap records are saved
@@ -60,7 +60,7 @@ func saveBootstrap(fs vfs.FS,
 	buf := pb.MustMarshal(&rec)
 	fn := makeBootstrapFilename(fs, dirname, shardID, replicaID, true)
 	ffn := makeBootstrapFilename(fs, dirname, shardID, replicaID, false)
-	f, err := fs.Create(fn)
+	f, err := fs.Create(fn, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		return err
 	}

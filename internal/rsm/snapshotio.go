@@ -183,7 +183,7 @@ func NewSnapshotWriter(fp string,
 
 func newVersionedSnapshotWriter(fp string,
 	v SSVersion, ct pb.CompressionType, fs vfs.IFS) (*SnapshotWriter, error) {
-	f, err := fs.Create(fp)
+	f, err := fs.Create(fp, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		return nil, err
 	}

@@ -16,10 +16,11 @@ package tan
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/binary"
 	"io"
 	"math"
-	"sort"
+	"slices"
 
 	"github.com/cockroachdb/errors"
 )
@@ -105,7 +106,7 @@ type indexDecoder struct {
 func (d indexDecoder) readUvarint() (uint64, error) {
 	u, err := binary.ReadUvarint(d)
 	if err != nil {
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return 0, errCorruptIndexFile
 		}
 		return 0, err
@@ -131,9 +132,7 @@ type index struct {
 }
 
 func (i *index) setCompactedTo(index uint64) {
-	if index > i.compactedTo {
-		i.compactedTo = index
-	}
+	i.compactedTo = max(i.compactedTo, index)
 }
 
 func (i *index) size() uint64 {
@@ -182,9 +181,10 @@ func (i *index) query(low uint64, high uint64) ([]indexEntry, bool) {
 		return []indexEntry{}, false
 	}
 
-	startIdx := sort.Search(len(i.entries), func(pos int) bool {
-		return low <= i.entries[pos].end
-	})
+	startIdx, _ := slices.BinarySearchFunc(i.entries, low,
+		func(e indexEntry, target uint64) int {
+			return cmp.Compare(e.end, target)
+		})
 	if startIdx >= len(i.entries) {
 		return []indexEntry{}, false
 	}
@@ -227,7 +227,7 @@ func (i *index) decode(d *indexDecoder) error {
 	if err != nil {
 		return err
 	}
-	for idx := uint64(0); idx < sz; idx++ {
+	for range sz {
 		start, err := d.readUvarint()
 		if err != nil {
 			return err
@@ -393,14 +393,7 @@ func (n *nodeIndex) compaction() []fileNum {
 	sfn := n.snapshotCompaction()
 	stateFn := n.stateCompaction()
 	maxObsoleteFileNum := fileNum(0)
-	if efn < sfn {
-		maxObsoleteFileNum = efn
-	} else {
-		maxObsoleteFileNum = sfn
-	}
-	if stateFn < maxObsoleteFileNum {
-		maxObsoleteFileNum = stateFn
-	}
+	maxObsoleteFileNum = min(min(efn, sfn), stateFn)
 	if maxObsoleteFileNum == fileNum(math.MaxUint64) ||
 		maxObsoleteFileNum == fileNum(0) {
 		return nil

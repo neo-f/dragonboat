@@ -40,11 +40,11 @@ import (
 	"io"
 	"sync"
 
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/lni/dragonboat/v4/config"
 	"github.com/lni/dragonboat/v4/internal/fileutil"
 	"github.com/lni/dragonboat/v4/raftio"
 	pb "github.com/lni/dragonboat/v4/raftpb"
-	"github.com/lni/vfs"
 )
 
 const (
@@ -326,13 +326,11 @@ func (l *LogDB) sequentialSaveState(updates []pb.Update, shardID uint64) error {
 			return err
 		}
 		if sync {
-			wg.Add(1)
-			go func() {
+			wg.Go(func() {
 				if err := db.sync(); err != nil {
 					panicNow(err)
 				}
-				wg.Done()
-			}()
+			})
 		}
 	}
 	wg.Wait()

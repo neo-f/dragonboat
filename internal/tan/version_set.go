@@ -21,10 +21,11 @@ package tan
 import (
 	"bytes"
 	"io"
+	"maps"
 	"sync"
 
 	"github.com/cockroachdb/errors"
-	"github.com/lni/vfs"
+	"github.com/cockroachdb/pebble/v2/vfs"
 )
 
 // versionSet manages a collection of immutable versions, and manages the
@@ -154,7 +155,7 @@ func (vs *versionSet) load(dirname string,
 	rr := newReader(manifest, 0 /* logNum */)
 	for {
 		r, err := rr.next()
-		if err == io.EOF || IsInvalidRecord(err) {
+		if errors.Is(err, io.EOF) || IsInvalidRecord(err) {
 			// FIXME:
 			// not to tolerate actually corrupted manifest
 			break
@@ -168,7 +169,7 @@ func (vs *versionSet) load(dirname string,
 		if err != nil {
 			// Break instead of returning an error if the record is corrupted
 			// or invalid.
-			if err == io.EOF || IsInvalidRecord(err) {
+			if errors.Is(err, io.EOF) || IsInvalidRecord(err) {
 				break
 			}
 			return err
@@ -316,9 +317,7 @@ func (vs *versionSet) logAndApply(
 	// Update the zombie tables set first, as installation of the new version
 	// will unref the previous version which could result in addObsoleteLocked
 	// being called.
-	for fileNum, size := range zombies {
-		vs.zombieTables[fileNum] = size
-	}
+	maps.Copy(vs.zombieTables, zombies)
 	// Install the new version.
 	vs.append(newVersion)
 	if newManifestFileNum != 0 {
@@ -351,7 +350,7 @@ func (vs *versionSet) createManifest(
 			err = firstError(err, vs.fs.Remove(filename))
 		}
 	}()
-	manifestFile, err = vs.fs.Create(filename)
+	manifestFile, err = vs.fs.Create(filename, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		return err
 	}

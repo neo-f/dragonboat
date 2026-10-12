@@ -19,7 +19,8 @@
 package tan
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 
 	pb "github.com/lni/dragonboat/v4/raftpb"
 )
@@ -73,9 +74,7 @@ func merge(a, b []fileNum) []fileNum {
 	}
 
 	a = append(a, b...)
-	sort.Slice(a, func(i, j int) bool {
-		return a[i] < a[j]
-	})
+	slices.Sort(a)
 
 	n := 0
 	for i := 0; i < len(a); i++ {
@@ -93,8 +92,8 @@ func mergeFileMetas(a, b []*fileMetadata) []*fileMetadata {
 	}
 
 	a = append(a, b...)
-	sort.Slice(a, func(i, j int) bool {
-		return a[i].fileNum < a[j].fileNum
+	slices.SortFunc(a, func(x, y *fileMetadata) int {
+		return cmp.Compare(x.fileNum, y.fileNum)
 	})
 
 	n := 0
@@ -211,11 +210,9 @@ func (d *db) installSnapshot(shardID uint64,
 	update := pb.Update{
 		ShardID:   shardID,
 		ReplicaID: replicaID,
-		State: pb.State{
-			Commit: ss.Index,
-			Term:   ss.Term,
-		},
-		Snapshot: ss,
+		Commit:    ss.Index,
+		Term:      ss.Term,
+		Snapshot:  ss,
 	}
 	buf := make([]byte, update.SizeUpperLimit())
 	data := pb.MustMarshalTo(&update, buf)
@@ -263,6 +260,6 @@ func getCompactionUpdate(shardID uint64, replicaID uint64, index uint64) pb.Upda
 	return pb.Update{
 		ShardID:   shardID,
 		ReplicaID: replicaID,
-		State:     pb.State{Commit: index, Term: compactionFlag},
+		Commit:    index, Term: compactionFlag,
 	}
 }

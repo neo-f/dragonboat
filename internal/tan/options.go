@@ -19,7 +19,7 @@
 package tan
 
 import (
-	"github.com/lni/vfs"
+	"github.com/cockroachdb/pebble/v2/vfs"
 )
 
 const (

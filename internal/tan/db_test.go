@@ -25,11 +25,12 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/lni/goutils/leaktest"
-	"github.com/lni/vfs"
 	"github.com/stretchr/testify/require"
 
 	"github.com/lni/dragonboat/v4/internal/fileutil"
+	dvfs "github.com/lni/dragonboat/v4/internal/vfs"
 	"github.com/lni/dragonboat/v4/raftio"
 	pb "github.com/lni/dragonboat/v4/raftpb"
 )
@@ -45,7 +46,7 @@ func runTanTest(t *testing.T, opts *Options, tf func(t *testing.T, d *db), fs vf
 	} else if opts.FS == nil {
 		panic("fs not specified")
 	}
-	defer vfs.ReportLeakedFD(opts.FS, t)
+	defer dvfs.ReportLeakedFD(opts.FS, t)
 	dirname := "/Users/lni/db-dir"
 	require.NoError(t, fileutil.MkdirAll(dirname, opts.FS))
 	db, err := open(dirname, dirname, opts)
@@ -57,7 +58,7 @@ func runTanTest(t *testing.T, opts *Options, tf func(t *testing.T, d *db), fs vf
 }
 
 func TestOpenNewDB(t *testing.T) {
-	fs := vfs.NewMem()
+	fs := dvfs.NewMemFS()
 	tf := func(t *testing.T, db *db) {
 		rs, err := db.getRaftState(2, 3, 200)
 		require.Equal(t, raftio.ErrNoSavedLog, err)
@@ -79,7 +80,7 @@ func TestOpenNewDB(t *testing.T) {
 func TestBasicDBReadWrite(t *testing.T) {
 	for _, testSize := range []uint64{0, 1, 1024, 16 * 1024, blockSize, blockSize * 3} {
 		size := testSize
-		fs := vfs.NewMem()
+		fs := dvfs.NewMemFS()
 		tf := func(t *testing.T, db *db) {
 			var cmd []byte
 			if size > 0 {
@@ -88,11 +89,9 @@ func TestBasicDBReadWrite(t *testing.T) {
 			u1 := pb.Update{
 				ShardID:   2,
 				ReplicaID: 3,
-				State: pb.State{
-					Commit: 100,
-					Term:   5,
-					Vote:   3,
-				},
+				Commit:    100,
+				Term:      5,
+				Vote:      3,
 				Snapshot: pb.Snapshot{
 					Index: 100,
 					Term:  5,
@@ -106,11 +105,9 @@ func TestBasicDBReadWrite(t *testing.T) {
 			u2 := pb.Update{
 				ShardID:   2,
 				ReplicaID: 3,
-				State: pb.State{
-					Commit: 200,
-					Term:   10,
-					Vote:   6,
-				},
+				Commit:    200,
+				Term:      10,
+				Vote:      6,
 				Snapshot: pb.Snapshot{
 					Index: 200,
 					Term:  10,
@@ -205,7 +202,7 @@ func TestEntryOverwrite(t *testing.T) {
 		low := tt.low
 		high := tt.high
 		func() {
-			fs := vfs.NewMem()
+			fs := dvfs.NewMemFS()
 			tf := func(t *testing.T, db *db) {
 				for _, ir := range input {
 					u := pb.Update{ShardID: 2, ReplicaID: 3}
@@ -234,7 +231,7 @@ func TestEntryOverwrite(t *testing.T) {
 }
 
 func TestEmptyEntryUpdate(t *testing.T) {
-	fs := vfs.NewMem()
+	fs := dvfs.NewMemFS()
 	tf := func(t *testing.T, db *db) {
 		u1 := pb.Update{
 			ShardID:   2,
@@ -254,10 +251,8 @@ func TestEmptyEntryUpdate(t *testing.T) {
 		u3 := pb.Update{
 			ShardID:   2,
 			ReplicaID: 3,
-			State: pb.State{
-				Commit: 1,
-				Term:   5,
-			},
+			Commit:    1,
+			Term:      5,
 		}
 		u4 := pb.Update{
 			ShardID:   2,
@@ -284,7 +279,7 @@ func TestEmptyEntryUpdate(t *testing.T) {
 }
 
 func TestSnapshotUpdate(t *testing.T) {
-	fs := vfs.NewMem()
+	fs := dvfs.NewMemFS()
 	tf := func(t *testing.T, db *db) {
 		u1 := pb.Update{
 			ShardID:   2,
@@ -325,7 +320,7 @@ func TestSnapshotUpdate(t *testing.T) {
 }
 
 func TestLogRotation(t *testing.T) {
-	fs := vfs.NewMem()
+	fs := dvfs.NewMemFS()
 	opts := &Options{
 		MaxLogFileSize:      1024,
 		MaxManifestFileSize: MaxManifestFileSize,
@@ -339,11 +334,9 @@ func TestLogRotation(t *testing.T) {
 		u := pb.Update{
 			ShardID:   2,
 			ReplicaID: 3,
-			State: pb.State{
-				Commit: 100,
-				Term:   5,
-				Vote:   3,
-			},
+			Commit:    100,
+			Term:      5,
+			Vote:      3,
 			Snapshot: pb.Snapshot{
 				Index: 100,
 				Term:  5,
@@ -379,7 +372,7 @@ func TestLogRotation(t *testing.T) {
 }
 
 func TestDBRestart(t *testing.T) {
-	fs := vfs.NewMem()
+	fs := dvfs.NewMemFS()
 	opts := &Options{
 		MaxLogFileSize:      1024,
 		MaxManifestFileSize: MaxManifestFileSize,
@@ -390,11 +383,9 @@ func TestDBRestart(t *testing.T) {
 		u := pb.Update{
 			ShardID:   2,
 			ReplicaID: 3,
-			State: pb.State{
-				Commit: 100,
-				Term:   5,
-				Vote:   3,
-			},
+			Commit:    100,
+			Term:      5,
+			Vote:      3,
 			EntriesToSave: []pb.Entry{
 				{Index: 0, Term: 5},
 			},
@@ -416,11 +407,9 @@ func TestDBRestart(t *testing.T) {
 		u := pb.Update{
 			ShardID:   2,
 			ReplicaID: 3,
-			State: pb.State{
-				Commit: 100,
-				Term:   5,
-				Vote:   3,
-			},
+			Commit:    100,
+			Term:      5,
+			Vote:      3,
 			Snapshot: pb.Snapshot{
 				Index: 100,
 				Term:  5,
@@ -455,8 +444,8 @@ func TestDBRestart(t *testing.T) {
 
 func TestDBConcurrentAccess(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	fs := vfs.NewMem()
-	defer vfs.ReportLeakedFD(fs, t)
+	fs := dvfs.NewMemFS()
+	defer dvfs.ReportLeakedFD(fs, t)
 	opts := &Options{
 		MaxLogFileSize:      1,
 		MaxManifestFileSize: MaxManifestFileSize,
@@ -470,18 +459,14 @@ func TestDBConcurrentAccess(t *testing.T) {
 		require.NoError(t, db.close())
 	}()
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		buf := make([]byte, 1024)
 		for i := uint64(1); i <= uint64(1000); i++ {
 			u := pb.Update{
 				ShardID:   2,
 				ReplicaID: 3,
-				State: pb.State{
-					Commit: i,
-					Term:   6,
-				},
+				Commit:    i,
+				Term:      6,
 				Snapshot: pb.Snapshot{
 					Index: i,
 					Term:  6,
@@ -493,10 +478,8 @@ func TestDBConcurrentAccess(t *testing.T) {
 			_, err := db.write(u, buf)
 			require.NoError(t, err)
 		}
-	}()
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	})
+	wg.Go(func() {
 		buf := make([]byte, 1024)
 		for i := uint64(1); i <= uint64(1000); i++ {
 			if i%uint64(10) == 0 {
@@ -511,10 +494,8 @@ func TestDBConcurrentAccess(t *testing.T) {
 				u := pb.Update{
 					ShardID:   2,
 					ReplicaID: 3,
-					State: pb.State{
-						Commit: i,
-						Term:   5,
-					},
+					Commit:    i,
+					Term:      5,
 					Snapshot: pb.Snapshot{
 						Index: i,
 						Term:  5,
@@ -527,11 +508,9 @@ func TestDBConcurrentAccess(t *testing.T) {
 				require.NoError(t, err)
 			}
 		}
-	}()
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < 1000; i++ {
+	})
+	wg.Go(func() {
+		for range 1000 {
 			var result []pb.Entry
 			_, _, err := db.getEntries(2, 3, result, 0, 1, 100, math.MaxUint64)
 			require.NoError(t, err)
@@ -540,12 +519,12 @@ func TestDBConcurrentAccess(t *testing.T) {
 			_, err = db.getRaftState(2, 3, 1)
 			require.True(t, err == nil || errors.Is(err, raftio.ErrNoSavedLog))
 		}
-	}()
+	})
 	wg.Wait()
 }
 
 func TestDBIndexIsSavedOnClose(t *testing.T) {
-	fs := vfs.NewMem()
+	fs := dvfs.NewMemFS()
 	var logNum fileNum
 	var index []indexEntry
 	var dirname string
@@ -574,7 +553,7 @@ func TestDBIndexIsSavedOnClose(t *testing.T) {
 }
 
 func TestRebuildIndex(t *testing.T) {
-	fs := vfs.NewMem()
+	fs := dvfs.NewMemFS()
 	var logNum fileNum
 	var savedIndex index
 	var snapshot indexEntry
@@ -615,7 +594,7 @@ func TestRebuildIndex(t *testing.T) {
 func TestRebuildLog(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	fs := vfs.Default
-	defer vfs.ReportLeakedFD(fs, t)
+	defer dvfs.ReportLeakedFD(fs, t)
 	opts := &Options{
 		MaxManifestFileSize: MaxManifestFileSize,
 		FS:                  fs,
@@ -668,7 +647,7 @@ func TestRebuildLog(t *testing.T) {
 }
 
 func TestGetEntriesWithMaxSize(t *testing.T) {
-	fs := vfs.NewMem()
+	fs := dvfs.NewMemFS()
 	opts := &Options{
 		MaxManifestFileSize: MaxManifestFileSize,
 		MaxLogFileSize:      1024,
@@ -677,7 +656,7 @@ func TestGetEntriesWithMaxSize(t *testing.T) {
 	tf := func(t *testing.T, db *db) {
 		cmd := make([]byte, 128)
 		buf := make([]byte, 1024)
-		for i := 0; i < 128; i++ {
+		for i := range 128 {
 			u := pb.Update{
 				ShardID:   2,
 				ReplicaID: 3,

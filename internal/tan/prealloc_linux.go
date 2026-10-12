@@ -22,17 +22,16 @@
 package tan
 
 import (
-	"os"
 	"syscall"
 
-	"github.com/lni/vfs"
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"golang.org/x/sys/unix"
 )
 
 func prealloc(f vfs.File, size int64) error {
-	osf, ok := f.(*os.File)
-	if !ok {
+	fd := f.Fd()
+	if fd == vfs.InvalidFd {
 		return nil
 	}
-	return syscall.Fallocate(int(osf.Fd()), unix.FALLOC_FL_KEEP_SIZE, 0, size)
+	return syscall.Fallocate(int(fd), unix.FALLOC_FL_KEEP_SIZE, 0, size)
 }
