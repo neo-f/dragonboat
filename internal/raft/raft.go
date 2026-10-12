@@ -467,7 +467,7 @@ func (r *raft) restore(ss pb.Snapshot) (bool, error) {
 			if nid == r.replicaID {
 				plog.Error("converting to nonVoting",
 					"node", r.describe(), "index", ss.Index,
-					"committed", r.log.committed, slog.Any("snapshot", ss))
+					"committed", r.log.committed, "snapshot", ss)
 				panic(fmt.Errorf("%s converting to nonVoting, index %d, committed %d, %+v",
 					r.describe(), ss.Index, r.log.committed, ss))
 			}
@@ -478,7 +478,7 @@ func (r *raft) restore(ss pb.Snapshot) (bool, error) {
 			if nid == r.replicaID {
 				plog.Error("converting to witness",
 					"node", r.describe(), "index", ss.Index,
-					"committed", r.log.committed, slog.Any("snapshot", ss))
+					"committed", r.log.committed, "snapshot", ss)
 				panic(fmt.Errorf("%s converting to witness, index %d, committed %d, %+v",
 					r.describe(), ss.Index, r.log.committed, ss))
 			}
@@ -518,7 +518,7 @@ func (r *raft) restoreRemotes(ss pb.Snapshot) {
 		r.setRemote(id, match, next)
 		plog.Debug("restored remote progress",
 			"node", r.describe(), "replica_id", ReplicaID(id),
-			slog.Any("remote", r.remotes[id]))
+			"remote", r.remotes[id])
 	}
 	if r.selfRemoved() && r.isLeader() {
 		r.becomeFollower(r.term, NoLeader)
@@ -533,7 +533,7 @@ func (r *raft) restoreRemotes(ss pb.Snapshot) {
 		r.setNonVoting(id, match, next)
 		plog.Debug("restored nonVoting progress",
 			"node", r.describe(), "replica_id", ReplicaID(id),
-			slog.Any("remote", r.nonVotings[id]))
+			"remote", r.nonVotings[id])
 	}
 	r.witnesses = make(map[uint64]*remote)
 	for id := range ss.Membership.Witnesses {
@@ -545,7 +545,7 @@ func (r *raft) restoreRemotes(ss pb.Snapshot) {
 		r.setWitness(id, match, next)
 		plog.Debug("restored witness progress",
 			"node", r.describe(), "replica_id", ReplicaID(id),
-			slog.Any("remote", r.witnesses[id]))
+			"remote", r.witnesses[id])
 	}
 	r.resetMatchValueArray()
 }

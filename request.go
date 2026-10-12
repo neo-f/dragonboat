@@ -921,7 +921,7 @@ func (p *pendingReadIndex) add(sys pb.SystemCtx, reqs []*RequestState) {
 		return
 	}
 	if _, ok := p.batches[sys]; ok {
-		plog.Error("same system ctx added again", slog.Any("ctx", sys))
+		plog.Error("same system ctx added again", "ctx", sys)
 		panic(fmt.Errorf("same system ctx added again %v", sys))
 	} else {
 		rs := make([]*RequestState, len(reqs))

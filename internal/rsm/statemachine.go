@@ -756,7 +756,7 @@ func (s *StateMachine) setLastApplied(entries []pb.Entry) {
 		term := uint64(0)
 		for idx, e := range entries {
 			if e.Index == 0 || e.Term == 0 {
-				plog.Error("invalid entry", slog.Any("entry", e))
+				plog.Error("invalid entry", "entry", e)
 				panic(fmt.Errorf("invalid entry, %v", e))
 			}
 			if idx == 0 {

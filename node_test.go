@@ -17,7 +17,6 @@ package dragonboat
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"math/rand/v2"
 	"slices"
 	"strings"
@@ -205,7 +204,7 @@ func doGetTestRaftNodes(testDir string, startID uint64, count int, ordered bool,
 			nil, []string{nodeLogDir}, []string{nodeLowLatencyLogDir})
 		if err != nil {
 			plog.Error("failed to open logdb",
-				slog.String("error", fmt.Sprintf("%+v", err)))
+				"error", fmt.Sprintf("%+v", err))
 			panic(fmt.Errorf("failed to open logdb, %w", err))
 		}
 	}
@@ -459,7 +458,7 @@ func getProposalTestClient(n *node,
 			cs.PrepareForPropose()
 			return cs, true
 		}
-		plog.Info("unknown result/code", slog.Any("result", v))
+		plog.Info("unknown result/code", "result", v)
 	case <-n.stopC:
 		plog.Error("stopc triggered")
 		return nil, false

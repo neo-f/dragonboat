@@ -17,7 +17,6 @@ package dragonboat
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"reflect"
 	"sync"
 	"time"
@@ -591,7 +590,7 @@ func (p *workerPool) canSchedule(j job) bool {
 	} else if j.task.Stream {
 		return p.canStream(j.shardID)
 	} else {
-		plog.Error("unknown task type", slog.Any("task", j.task))
+		plog.Error("unknown task type", "task", j.task)
 		panic(fmt.Errorf("unknown task type %v", j.task))
 	}
 }
@@ -650,7 +649,7 @@ func (p *workerPool) start(j job, n *node, workerID uint64) {
 	} else if j.task.Stream {
 		p.startStreaming(n)
 	} else {
-		plog.Error("unknown task type", slog.Any("task", j.task))
+		plog.Error("unknown task type", "task", j.task)
 		panic(fmt.Errorf("unknown task type %v", j.task))
 	}
 }

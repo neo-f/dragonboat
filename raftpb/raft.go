@@ -155,7 +155,7 @@ func (b *Bootstrap) Validate(nodes map[uint64]string,
 	}
 	if b.Join && len(nodes) > 0 {
 		plog.Error("restarting previously joined node",
-			slog.Any("member_list", nodes))
+			"member_list", nodes)
 		return false
 	}
 	if join && len(b.Addresses) > 0 {
@@ -179,7 +179,7 @@ func (b *Bootstrap) Validate(nodes map[uint64]string,
 	}
 	if !valid {
 		plog.Error("inconsistent node list",
-			slog.Any("bootstrap", b.Addresses), slog.Any("incoming", nodes))
+			"bootstrap", b.Addresses, "incoming", nodes)
 	}
 	return valid
 }

@@ -281,7 +281,7 @@ func iteratorIsValid(iter *pebble.Iterator) bool {
 	v := iter.Valid()
 	if err := iter.Error(); err != nil {
 		plog.Error("iterator error",
-			slog.String("error", fmt.Sprintf("%+v", err)))
+			"error", fmt.Sprintf("%+v", err))
 		panic(err)
 	}
 	return v

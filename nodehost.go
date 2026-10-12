@@ -58,7 +58,6 @@ package dragonboat // github.com/neo-f/dragonboat/v4
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"math"
 	"reflect"
 	"runtime"
@@ -1528,8 +1527,8 @@ func (nh *NodeHost) bootstrapShard(initialMembers map[uint64]Target,
 	if !bi.Validate(initialMembers, join, smType) {
 		plog.Error("bootstrap info validation failed",
 			"id", dn(cfg.ShardID, cfg.ReplicaID),
-			slog.Any("addresses", bi.Addresses), "bootstrap_join", bi.Join,
-			slog.Any("initial_members", initialMembers), "join", join)
+			"addresses", bi.Addresses, "bootstrap_join", bi.Join,
+			"initial_members", initialMembers, "join", join)
 		return nil, false, ErrInvalidShardSettings
 	}
 	return bi.Addresses, !bi.Join, nil
@@ -2000,7 +1999,7 @@ func getRequestState(ctx context.Context, rs *RequestState) (sm.Result, error) {
 		} else if r.Aborted() {
 			return sm.Result{}, ErrAborted
 		}
-		plog.Error("unknown v code", slog.Any("code", r))
+		plog.Error("unknown v code", "code", r)
 		panic(fmt.Errorf("unknown v code %v", r))
 	case <-ctx.Done():
 		if ctx.Err() == context.Canceled {
@@ -2213,6 +2212,6 @@ func panicNow(err error) {
 		panic("panicNow called with nil error")
 	}
 	plog.Error("panicNow",
-		slog.String("error", fmt.Sprintf("%+v", err)))
+		"error", fmt.Sprintf("%+v", err))
 	panic(err)
 }

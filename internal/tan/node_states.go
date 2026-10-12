@@ -18,7 +18,6 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"log/slog"
 
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/neo-f/dragonboat/v4/raftio"
@@ -191,7 +190,7 @@ func (s *nodeStates) load(dirname string, fn fileNum, fs vfs.FS) (err error) {
 		}
 		for idx, e := range entries.entries {
 			if e.isSnapshot() || e.isState() {
-				plog.Error("unexpected type", slog.Any("entry", e))
+				plog.Error("unexpected type", "entry", e)
 				panic(fmt.Errorf("unexpected type %v", e))
 			}
 			if idx == 0 {

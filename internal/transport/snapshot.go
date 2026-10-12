@@ -35,7 +35,6 @@ package transport
 
 import (
 	"fmt"
-	"log/slog"
 	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
@@ -114,7 +113,7 @@ func (t *Transport) doSendSnapshot(m pb.Message) bool {
 	chunks, err := splitSnapshotMessage(m, t.fs)
 	if err != nil {
 		plog.Error("failed to get snapshot chunks",
-			slog.String("error", fmt.Sprintf("%+v", err)))
+			"error", fmt.Sprintf("%+v", err))
 		return false
 	}
 	addr, _, err := t.resolver.Resolve(shardID, toReplicaID)

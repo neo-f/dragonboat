@@ -21,7 +21,6 @@ package tan
 import (
 	"cmp"
 	"fmt"
-	"log/slog"
 	"slices"
 
 	"github.com/cockroachdb/errors"
@@ -77,7 +76,7 @@ func open(name string, dirname string, opts *Options) (*db, error) {
 	if err != nil {
 		return nil, err
 	}
-	plog.Info("on disk files", "id", d.id(), slog.Any("files", ls))
+	plog.Info("on disk files", "id", d.id(), "files", ls)
 	type fileNumAndName struct {
 		num  fileNum
 		name string
@@ -133,8 +132,8 @@ func open(name string, dirname string, opts *Options) (*db, error) {
 		delete(logFiles, indexFile.num)
 	}
 	plog.Info("logFiles to rebuild",
-		"id", d.id(), slog.Any("log_files", logFiles))
-	plog.Info("indexFiles", "id", d.id(), slog.Any("index_files", indexFiles))
+		"id", d.id(), "log_files", logFiles)
+	plog.Info("indexFiles", "id", d.id(), "index_files", indexFiles)
 	for _, lf := range logFiles {
 		if len(indexFiles) == 0 || lf.num > indexFiles[len(indexFiles)-1].num {
 			if lf.num != lastLogNum {

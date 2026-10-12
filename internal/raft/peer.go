@@ -42,7 +42,6 @@ package raft
 import (
 	"cmp"
 	"fmt"
-	"log/slog"
 	"slices"
 
 	"github.com/cockroachdb/errors"
@@ -400,7 +399,7 @@ func checkLaunchRequest(config config.Config,
 		uniqueAddressList[addr.Address] = struct{}{}
 	}
 	if len(uniqueAddressList) != len(addresses) {
-		plog.Error("duplicated address found", slog.Any("addresses", addresses))
+		plog.Error("duplicated address found", "addresses", addresses)
 		panic(fmt.Errorf("duplicated address found %v", addresses))
 	}
 	if initial && config.IsWitness {

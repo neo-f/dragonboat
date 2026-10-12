@@ -69,7 +69,7 @@ func getMirroredValue[T any](t *LogDB, name string, shardID uint64,
 	if !reflect.DeepEqual(ov, nv) {
 		plog.Error("conflict values",
 			"id", dn(shardID, replicaID), "name", name,
-			slog.Any("old_value", ov), slog.Any("new_value", nv))
+			"old_value", ov, "new_value", nv)
 		panic(fmt.Errorf("%s conflict %s values, %+v, %+v",
 			dn(shardID, replicaID), name, ov, nv))
 	}
@@ -187,7 +187,7 @@ func (t *LogDB) ListNodeInfo() ([]raftio.NodeInfo, error) {
 	})
 	if !reflect.DeepEqual(o, n) {
 		plog.Error("conflict NodeInfo list",
-			slog.Any("old", o), slog.Any("new", n))
+			"old", o, "new", n)
 		panic(fmt.Errorf("conflict NodeInfo list, %+v, %+v", o, n))
 	}
 	return o, nil
@@ -241,7 +241,7 @@ func (t *LogDB) IterateEntries(ents []pb.Entry,
 		plog.Info("")
 		plog.Error("conflict sizes",
 			"id", dn(shardID, replicaID), "old_size", os, "new_size", ns,
-			slog.Any("old_entries", ov), slog.Any("new_entries", nv))
+			"old_entries", ov, "new_entries", nv)
 		panic(fmt.Errorf("%s conflict sizes, %d, %d, %+v, %+v",
 			dn(shardID, replicaID), os, ns, ov, nv))
 	}
@@ -249,8 +249,8 @@ func (t *LogDB) IterateEntries(ents []pb.Entry,
 		if !reflect.DeepEqual(ov, nv) {
 			plog.Error("conflict entry lists",
 				"id", dn(shardID, replicaID),
-				"old_len", len(ov), slog.Any("old_entries", ov),
-				"new_len", len(nv), slog.Any("new_entries", nv))
+				"old_len", len(ov), "old_entries", ov,
+				"new_len", len(nv), "new_entries", nv)
 			panic(fmt.Errorf("%s conflict entry lists, len: %d, %+v \n\n len: %d, %+v",
 				dn(shardID, replicaID), len(ov), ov, len(nv), nv))
 		}
@@ -272,7 +272,7 @@ func (t *LogDB) ReadRaftState(shardID uint64,
 	if !reflect.DeepEqual(os, ns) {
 		plog.Error("conflict ReadRaftState values",
 			"id", dn(shardID, replicaID),
-			slog.Any("old_state", os), slog.Any("new_state", ns))
+			"old_state", os, "new_state", ns)
 		panic(fmt.Errorf("%s conflict ReadRaftState values, %+v, %+v",
 			dn(shardID, replicaID), os, ns))
 	}

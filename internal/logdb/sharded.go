@@ -16,7 +16,6 @@ package logdb
 
 import (
 	"fmt"
-	"log/slog"
 	"math"
 	"sync/atomic"
 
@@ -78,7 +77,7 @@ func OpenShardedDB(config config.NodeHostConfig, cb config.LogDBCallback,
 		}
 		if err != nil {
 			plog.Error("failed to close all shards",
-				slog.String("error", fmt.Sprintf("%+v", err)))
+				"error", fmt.Sprintf("%+v", err))
 			panic("not suppose to reach here")
 		}
 	}
@@ -376,6 +375,6 @@ func (s *ShardedDB) compact() error {
 
 func panicNow(err error) {
 	plog.Error("unrecoverable error",
-		slog.String("error", fmt.Sprintf("%+v", err)))
+		"error", fmt.Sprintf("%+v", err))
 	panic(err)
 }

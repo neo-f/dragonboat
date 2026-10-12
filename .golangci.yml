@@ -53,6 +53,7 @@ linters:
     - gomoddirectives
     - nolintlint
     - depguard
+    - sloglint
 
   disable:
     # lll/gofumpt: would reformat the entire repo; revisit as a dedicated
@@ -69,8 +70,8 @@ linters:
     - bodyclose
     - noctx
     - sqlclosecheck
-    # the repo has its own logger package by design
-    - sloglint
+    # the repo's own logger package was replaced with log/slog, loggercheck
+    # stays off as it targets logr-style kv loggers
     - loggercheck
     # repo tests do not use t.Parallel and mostly stay white-box
     - paralleltest
@@ -106,6 +107,14 @@ linters:
     nolintlint:
       require-explanation: true
       require-specific: true
+    sloglint:
+      # no-global stays off: components deliberately create scoped loggers
+      # with slog.With("pkg", ...) at package level, that is not global logging
+      no-global: ""
+      no-mixed-args: true # no mixing of key-value pairs and slog.Attr in one call
+      kv-only: true # plain key-value pairs only, slog.Xxx(...) attrs belong to variables
+      no-raw-keys: false
+      key-naming-case: snake
     gocritic:
       disabled-checks:
         # ifElseChain forces switch statements purely on style, it is not

@@ -16,7 +16,6 @@ package dragonboat
 
 import (
 	"fmt"
-	"log/slog"
 	"sync"
 	"sync/atomic"
 
@@ -798,7 +797,7 @@ func (n *node) doSave(req rsm.SSRequest) (uint64, error) {
 	}
 	if !ss.Validate(n.snapshotter.fs) {
 		plog.Error("generated invalid snapshot",
-			"id", n.id(), slog.Any("snapshot", ss))
+			"id", n.id(), "snapshot", ss)
 		panic(fmt.Errorf("%v generated invalid snapshot %v", n.id(), ss))
 	}
 	if err = n.logReader.CreateSnapshot(ss); err != nil {
@@ -1454,7 +1453,7 @@ func (n *node) handleSnapshotTask(task rsm.Task) {
 		}
 		n.reportStreamSnapshot(task)
 	} else {
-		plog.Error("unknown task type", slog.Any("task", task))
+		plog.Error("unknown task type", "task", task)
 		panic(fmt.Errorf("unknown task type %v", task))
 	}
 }

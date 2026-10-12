@@ -16,7 +16,6 @@ package dragonboat
 
 import (
 	"fmt"
-	"log/slog"
 	"sync"
 	"sync/atomic"
 
@@ -40,7 +39,7 @@ func (sr *snapshotTask) setStreamTask(t rsm.Task, getSinkFn getSink) {
 	defer sr.mu.Unlock()
 	if sr.hasTask {
 		plog.Error("setting stream snapshot task again",
-			slog.Any("existing_task", sr.t), slog.Any("task", t))
+			"existing_task", sr.t, "task", t)
 		panic(fmt.Errorf("setting stream snapshot task again %v\n%v", sr.t, t))
 	}
 	sr.hasTask = true
@@ -53,7 +52,7 @@ func (sr *snapshotTask) setTask(t rsm.Task) {
 	defer sr.mu.Unlock()
 	if sr.hasTask {
 		plog.Error("setting snapshot task again",
-			slog.Any("existing_task", sr.t), slog.Any("task", t))
+			"existing_task", sr.t, "task", t)
 		panic(fmt.Errorf("setting snapshot task again %v\n%v", sr.t, t))
 	}
 	sr.hasTask = true
