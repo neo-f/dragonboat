@@ -23,10 +23,10 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/pebble/v2/vfs"
-	"github.com/lni/dragonboat/v4/config"
-	dvfs "github.com/lni/dragonboat/v4/internal/vfs"
-	pb "github.com/lni/dragonboat/v4/raftpb"
 	"github.com/lni/goutils/leaktest"
+	"github.com/neo-f/dragonboat/v4/config"
+	dvfs "github.com/neo-f/dragonboat/v4/internal/vfs"
+	pb "github.com/neo-f/dragonboat/v4/raftpb"
 	"github.com/stretchr/testify/require"
 )
 

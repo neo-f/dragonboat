@@ -20,13 +20,13 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/lni/dragonboat/v4/config"
-	"github.com/lni/dragonboat/v4/internal/settings"
+	"github.com/neo-f/dragonboat/v4/config"
+	"github.com/neo-f/dragonboat/v4/internal/settings"
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/lni/dragonboat/v4/internal/server"
-	pb "github.com/lni/dragonboat/v4/raftpb"
+	"github.com/neo-f/dragonboat/v4/internal/server"
+	pb "github.com/neo-f/dragonboat/v4/raftpb"
 )
 
 //

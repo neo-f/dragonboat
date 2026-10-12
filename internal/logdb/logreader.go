@@ -39,9 +39,9 @@ import (
 
 	"github.com/lni/goutils/logutil"
 
-	"github.com/lni/dragonboat/v4/internal/raft"
-	"github.com/lni/dragonboat/v4/raftio"
-	pb "github.com/lni/dragonboat/v4/raftpb"
+	"github.com/neo-f/dragonboat/v4/internal/raft"
+	"github.com/neo-f/dragonboat/v4/raftio"
+	pb "github.com/neo-f/dragonboat/v4/raftpb"
 )
 
 const (

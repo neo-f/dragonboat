@@ -19,11 +19,11 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/lni/dragonboat/v4/internal/raft"
-	"github.com/lni/dragonboat/v4/internal/vfs"
-	"github.com/lni/dragonboat/v4/raftio"
-	pb "github.com/lni/dragonboat/v4/raftpb"
 	"github.com/lni/goutils/leaktest"
+	"github.com/neo-f/dragonboat/v4/internal/raft"
+	"github.com/neo-f/dragonboat/v4/internal/vfs"
+	"github.com/neo-f/dragonboat/v4/raftio"
+	pb "github.com/neo-f/dragonboat/v4/raftpb"
 	"github.com/stretchr/testify/require"
 )
 

@@ -39,8 +39,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lni/dragonboat/v4/logger"
-	pb "github.com/lni/dragonboat/v4/raftpb"
+	"github.com/neo-f/dragonboat/v4/logger"
+	pb "github.com/neo-f/dragonboat/v4/raftpb"
 )
 
 func TestFollowerUpdateTermFromMessage(t *testing.T) {

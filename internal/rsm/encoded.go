@@ -17,9 +17,9 @@ package rsm
 import (
 	"encoding/binary"
 
-	"github.com/lni/dragonboat/v4/config"
-	"github.com/lni/dragonboat/v4/internal/utils/dio"
-	pb "github.com/lni/dragonboat/v4/raftpb"
+	"github.com/neo-f/dragonboat/v4/config"
+	"github.com/neo-f/dragonboat/v4/internal/utils/dio"
+	pb "github.com/neo-f/dragonboat/v4/raftpb"
 )
 
 // Entry Cmd format when Type = pb.EncodedEntry

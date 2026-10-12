@@ -19,7 +19,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	pb "github.com/lni/dragonboat/v4/raftpb"
+	pb "github.com/neo-f/dragonboat/v4/raftpb"
 )
 
 // IsNodeHostID returns a boolean value indicating whether the specified value

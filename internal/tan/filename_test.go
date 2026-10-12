@@ -23,7 +23,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	dvfs "github.com/lni/dragonboat/v4/internal/vfs"
+	dvfs "github.com/neo-f/dragonboat/v4/internal/vfs"
 )
 
 func TestParseFilename(t *testing.T) {

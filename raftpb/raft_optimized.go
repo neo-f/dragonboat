@@ -11,7 +11,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/lni/dragonboat/v4/internal/settings"
+	"github.com/neo-f/dragonboat/v4/internal/settings"
 )
 
 const (

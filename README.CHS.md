@@ -1,10 +1,10 @@
 ![dragonboat](./docs/dragonboat.jpg)
 # Dragonboat - Go多组Raft库 #
-[![license](http://img.shields.io/badge/license-Apache2-blue.svg)](https://github.com/lni/dragonboat/blob/master/LICENSE)
-![Build status](https://github.com/lni/dragonboat/workflows/Test/badge.svg?branch=master)
-[![Go Report Card](https://goreportcard.com/badge/github.com/lni/dragonboat)](https://goreportcard.com/report/github.com/lni/dragonboat)
-[![codecov](https://codecov.io/gh/lni/dragonboat/branch/master/graph/badge.svg)](https://codecov.io/gh/lni/dragonboat)
-[![Godoc](http://img.shields.io/badge/go-documentation-blue.svg)](https://godoc.org/github.com/lni/dragonboat)
+[![license](http://img.shields.io/badge/license-Apache2-blue.svg)](https://github.com/neo-f/dragonboat/blob/master/LICENSE)
+![Build status](https://github.com/neo-f/dragonboat/workflows/Test/badge.svg?branch=master)
+[![Go Report Card](https://goreportcard.com/badge/github.com/neo-f/dragonboat)](https://goreportcard.com/report/github.com/neo-f/dragonboat)
+[![codecov](https://codecov.io/gh/neo-f/dragonboat/branch/master/graph/badge.svg)](https://codecov.io/gh/neo-f/dragonboat)
+[![Godoc](http://img.shields.io/badge/go-documentation-blue.svg)](https://pkg.go.dev/github.com/neo-f/dragonboat/v4)
 [![Ask LLM about dragonboat](https://deepwiki.com/badge.svg)](https://deepwiki.com/lni/dragonboat)
 
 ## 项目新闻 ##
@@ -68,12 +68,12 @@ Dragonboat是目前Github网站上最快的开源多组Raft实现。
 ![stw](./docs/stw.png)
 
 ## 系统需求 ##
-* x86_64/Linux, x86_64/MacOS或ARM64/Linux, Go 1.23或更新版本
+* x86_64/Linux, x86_64/MacOS或ARM64/Linux, Go 1.27或更新版本
 
 ## 开始使用 ##
 __Master是用于开发的非稳定branch。生产环境请使用已发布版本__。如您使用v3.3.x版本，请参考v3.3.x版本的[README.CHS.md](https://github.com/lni/dragonboat/blob/release-3.3/README.CHS.md)。
 
-首先请确保Go 1.14或者更新的版本已被安装以获得[Go module](https://github.com/golang/go/wiki/Modules)支持。
+首先请确保Go 1.27或者更新的版本已被安装以获得[Go module](https://github.com/golang/go/wiki/Modules)支持。
 
 使用下列命令将Dragonboat v3稳定版加入您的项目：
 
@@ -82,7 +82,7 @@ go get github.com/lni/dragonboat/v3@latest
 ```
 或者使用下列命令将开发中的Dragonboat v4版加入您的项目：
 ```
-go get github.com/lni/dragonboat/v4@master
+go get github.com/neo-f/dragonboat/v4@master
 ```
 
 [Pebble](https://github.com/cockroachdb/pebble)是默认的用于存储Raft Log的存储引擎。RocksDB与自定义存储引擎的使用方法可参考[这里](docs/storage.CHS.md)。
@@ -93,7 +93,7 @@ go get github.com/lni/dragonboat/v4@master
 
 首先建议您阅读项目的[综述文档](docs/overview.CHS.md)与[运维注意事项](docs/devops.CHS.md)。[DeepWiki](https://deepwiki.com/lni/dragonboat)是一个第三方LLM生成的wiki，能帮助深入了解本项目实现，并回答很多技术问题。
 
-欢迎阅读[godoc文档](https://godoc.org/github.com/lni/dragonboat)，[中文例程](https://github.com/lni/dragonboat-example)，[常见问题](https://github.com/lni/dragonboat/wiki/FAQ)和[CHANGELOG](CHANGELOG.md)。
+欢迎阅读[godoc文档](https://pkg.go.dev/github.com/neo-f/dragonboat/v4)，[中文例程](https://github.com/lni/dragonboat-example)，[常见问题](https://github.com/lni/dragonboat/wiki/FAQ)和[CHANGELOG](CHANGELOG.md)。
 
 ## 中文例程 ##
 中文例程在[这里](https://github.com/lni/dragonboat-example)。
@@ -102,7 +102,7 @@ go get github.com/lni/dragonboat/v4@master
 Dragonboat适用于生产环境。
 
 ## 参与 ##
-报告bugs, 请提交一个[issue](https://github.com/lni/dragonboat/issues/new)。参与贡献改进及新功能, 请提交pull request并创建一个[issue](https://github.com/lni/dragonboat/issues/new)以便讨论与进度追踪。
+报告bugs, 请提交一个[issue](https://github.com/neo-f/dragonboat/issues/new)。参与贡献改进及新功能, 请提交pull request并创建一个[issue](https://github.com/neo-f/dragonboat/issues/new)以便讨论与进度追踪。
 
 ## 开源许可协议 ##
 本项目以Apache License Version 2.0授权开源，请参考LICENSE文件。

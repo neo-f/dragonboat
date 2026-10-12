@@ -18,7 +18,7 @@ import (
 	"maps"
 	"testing"
 
-	pb "github.com/lni/dragonboat/v4/raftpb"
+	pb "github.com/neo-f/dragonboat/v4/raftpb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

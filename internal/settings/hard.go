@@ -25,7 +25,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/lni/dragonboat/v4/logger"
+	"github.com/neo-f/dragonboat/v4/logger"
 )
 
 var (

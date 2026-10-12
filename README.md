@@ -1,10 +1,10 @@
 ![dragonboat](./docs/dragonboat.jpg)
 # Dragonboat - A Multi-Group Raft library in Go / [中文版](README.CHS.md) ##
-[![license](http://img.shields.io/badge/license-Apache2-blue.svg)](https://github.com/lni/dragonboat/blob/master/LICENSE)
-![Build status](https://github.com/lni/dragonboat/workflows/Test/badge.svg?branch=master)
-[![Go Report Card](https://goreportcard.com/badge/github.com/lni/dragonboat)](https://goreportcard.com/report/github.com/lni/dragonboat)
-[![codecov](https://codecov.io/gh/lni/dragonboat/branch/master/graph/badge.svg)](https://codecov.io/gh/lni/dragonboat)
-[![Godoc](http://img.shields.io/badge/go-documentation-blue.svg)](https://godoc.org/github.com/lni/dragonboat/v3)
+[![license](http://img.shields.io/badge/license-Apache2-blue.svg)](https://github.com/neo-f/dragonboat/blob/master/LICENSE)
+![Build status](https://github.com/neo-f/dragonboat/workflows/Test/badge.svg?branch=master)
+[![Go Report Card](https://goreportcard.com/badge/github.com/neo-f/dragonboat)](https://goreportcard.com/report/github.com/neo-f/dragonboat)
+[![codecov](https://codecov.io/gh/neo-f/dragonboat/branch/master/graph/badge.svg)](https://codecov.io/gh/neo-f/dragonboat)
+[![Godoc](http://img.shields.io/badge/go-documentation-blue.svg)](https://pkg.go.dev/github.com/neo-f/dragonboat/v4)
 [![Ask LLM about dragonboat](https://deepwiki.com/badge.svg)](https://deepwiki.com/lni/dragonboat)
 
 ## News ##
@@ -67,12 +67,12 @@ As visualized below, Stop-the-World pauses caused by Go1.11's GC are sub-millise
 ![stw](./docs/stw.png)
 
 ## Requirements ##
-* x86_64/Linux, x86_64/MacOS or ARM64/Linux, Go 1.23 or above.
+* x86_64/Linux, x86_64/MacOS or ARM64/Linux, Go 1.27 or above.
 
 ## Getting Started ##
 __Master is our unstable branch for development, it is current working towards the v4.0 release. Please use the latest released versions for any production purposes.__ For Dragonboat v3.3.x, please follow the instructions in v3.3.x's [README.md](https://github.com/lni/dragonboat/blob/release-3.3/README.md). 
 
-Go 1.17 or above with [Go module](https://github.com/golang/go/wiki/Modules) support is required.
+Go 1.27 or above with [Go module](https://github.com/golang/go/wiki/Modules) support is required.
 
 Use the following command to add Dragonboat v3 into your project. 
 
@@ -83,7 +83,7 @@ go get github.com/lni/dragonboat/v3@latest
 Or you can use the following command to start using the development version of the Dragonboat, which is current at v4 for its APIs. 
 
 ```
-go get github.com/lni/dragonboat/v4@master
+go get github.com/neo-f/dragonboat/v4@master
 ```
 
 
@@ -94,7 +94,7 @@ You can also follow our [examples](https://github.com/lni/dragonboat-example) on
 ## Documents ##
 [DeepWiki](https://deepwiki.com/lni/dragonboat) is a LLM generated wiki helping to dive deep into the codebase.
 
-[FAQ](https://github.com/lni/dragonboat/wiki/FAQ), [docs](https://godoc.org/github.com/lni/dragonboat), step-by-step [examples](https://github.com/lni/dragonboat-example), [DevOps doc](docs/devops.md) and [CHANGELOG](CHANGELOG.md).
+[FAQ](https://github.com/lni/dragonboat/wiki/FAQ), [docs](https://pkg.go.dev/github.com/neo-f/dragonboat/v4), step-by-step [examples](https://github.com/lni/dragonboat-example), [DevOps doc](docs/devops.md) and [CHANGELOG](CHANGELOG.md).
 
 ## Examples ##
 Dragonboat examples are [here](https://github.com/lni/dragonboat-example).
@@ -103,7 +103,7 @@ Dragonboat examples are [here](https://github.com/lni/dragonboat-example).
 Dragonboat is production ready.
 
 ## Contributing ##
-For reporting bugs, please open an [issue](https://github.com/lni/dragonboat/issues/new). For contributing improvements or new features, please send in the pull request.
+For reporting bugs, please open an [issue](https://github.com/neo-f/dragonboat/issues/new). For contributing improvements or new features, please send in the pull request.
 
 ## License ##
 Dragonboat is licensed under the Apache License Version 2.0. See LICENSE for details.

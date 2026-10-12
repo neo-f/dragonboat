@@ -19,8 +19,8 @@ import (
 	"encoding/binary"
 	"testing"
 
-	pb "github.com/lni/dragonboat/v4/raftpb"
-	sm "github.com/lni/dragonboat/v4/statemachine"
+	pb "github.com/neo-f/dragonboat/v4/raftpb"
+	sm "github.com/neo-f/dragonboat/v4/statemachine"
 	"github.com/stretchr/testify/require"
 )
 

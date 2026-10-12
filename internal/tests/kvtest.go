@@ -34,10 +34,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lni/dragonboat/v4/internal/fileutil"
-	"github.com/lni/dragonboat/v4/internal/tests/kvpb"
-	sm "github.com/lni/dragonboat/v4/statemachine"
 	"github.com/lni/goutils/random"
+	"github.com/neo-f/dragonboat/v4/internal/fileutil"
+	"github.com/neo-f/dragonboat/v4/internal/tests/kvpb"
+	sm "github.com/neo-f/dragonboat/v4/statemachine"
 )
 
 // random delays

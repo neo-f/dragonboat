@@ -19,9 +19,9 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	"github.com/lni/dragonboat/v4/internal/logdb/kv"
-	"github.com/lni/dragonboat/v4/raftio"
-	pb "github.com/lni/dragonboat/v4/raftpb"
+	"github.com/neo-f/dragonboat/v4/internal/logdb/kv"
+	"github.com/neo-f/dragonboat/v4/raftio"
+	pb "github.com/neo-f/dragonboat/v4/raftpb"
 )
 
 //

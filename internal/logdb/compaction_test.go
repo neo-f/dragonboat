@@ -18,8 +18,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/lni/dragonboat/v4/raftio"
 	"github.com/lni/goutils/leaktest"
+	"github.com/neo-f/dragonboat/v4/raftio"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

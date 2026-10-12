@@ -25,8 +25,8 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/v2/vfs"
-	pb "github.com/lni/dragonboat/v4/raftpb"
 	"github.com/lni/goutils/syncutil"
+	pb "github.com/neo-f/dragonboat/v4/raftpb"
 )
 
 // open opens the tan db located in the folder called dirname.

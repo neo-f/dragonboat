@@ -33,10 +33,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lni/dragonboat/v4/config"
-	"github.com/lni/dragonboat/v4/internal/fileutil"
-	"github.com/lni/dragonboat/v4/internal/server"
-	pb "github.com/lni/dragonboat/v4/raftpb"
+	"github.com/neo-f/dragonboat/v4/config"
+	"github.com/neo-f/dragonboat/v4/internal/fileutil"
+	"github.com/neo-f/dragonboat/v4/internal/server"
+	pb "github.com/neo-f/dragonboat/v4/raftpb"
 )
 
 var (

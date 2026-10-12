@@ -22,8 +22,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	dvfs "github.com/lni/dragonboat/v4/internal/vfs"
-	"github.com/lni/dragonboat/v4/raftio"
+	dvfs "github.com/neo-f/dragonboat/v4/internal/vfs"
+	"github.com/neo-f/dragonboat/v4/raftio"
 )
 
 func TestEntryAppend(t *testing.T) {
