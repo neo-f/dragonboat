@@ -23,6 +23,7 @@ package raft
 
 import (
 	"fmt"
+	"log/slog"
 	"maps"
 	"math"
 	"slices"
@@ -34,12 +35,11 @@ import (
 	"github.com/neo-f/dragonboat/v4/config"
 	"github.com/neo-f/dragonboat/v4/internal/server"
 	"github.com/neo-f/dragonboat/v4/internal/settings"
-	"github.com/neo-f/dragonboat/v4/logger"
 	pb "github.com/neo-f/dragonboat/v4/raftpb"
 )
 
 var (
-	plog = logger.GetLogger("raft")
+	plog = slog.With("pkg", "raft")
 )
 
 const (
@@ -264,8 +264,9 @@ func newRaft(c config.Config, logdb ILogDB) *raft {
 		readIndex:        newReadIndex(),
 		rl:               rl,
 	}
-	plog.Infof("%s raft log rate limit enabled: %t, %d",
-		dn(r.shardID, r.replicaID), r.rl.Enabled(), c.MaxInMemLogSize)
+	plog.Info("raft log rate limit enabled",
+		"node", dn(r.shardID, r.replicaID), "enabled", r.rl.Enabled(),
+		"max_in_mem_log_size", c.MaxInMemLogSize)
 	st, members := logdb.NodeState()
 	for p := range members.Addresses {
 		r.remotes[p] = &remote{next: 1}
@@ -321,7 +322,9 @@ func (r *raft) describe() string {
 	li := r.log.lastIndex()
 	t, err := r.log.term(li)
 	if err != nil && !errors.Is(err, ErrCompacted) {
-		plog.Panicf("%s failed to get term, %v", dn(r.shardID, r.replicaID), err)
+		plog.Error("failed to get term",
+			"node", dn(r.shardID, r.replicaID), "error", err)
+		panic(fmt.Errorf("%s failed to get term, %w", dn(r.shardID, r.replicaID), err))
 	}
 	// first, last, term, committed, applied
 	fmtstr := "[f:%d,l:%d,t:%d,c:%d,a:%d] %s t%d"
@@ -348,7 +351,8 @@ func (r *raft) isWitness() bool {
 
 func (r *raft) mustBeLeader() {
 	if !r.isLeader() {
-		plog.Panicf("%s is not leader", r.describe())
+		plog.Error("is not leader", "node", r.describe())
+		panic(fmt.Errorf("%s is not leader", r.describe()))
 	}
 }
 
@@ -442,8 +446,11 @@ func (r *raft) raftState() pb.State {
 
 func (r *raft) loadState(st pb.State) {
 	if st.Commit < r.log.committed || st.Commit > r.log.lastIndex() {
-		plog.Panicf("%s got out of range state, st.commit %d, range[%d,%d]",
-			r.describe(), st.Commit, r.log.committed, r.log.lastIndex())
+		plog.Error("got out of range state",
+			"node", r.describe(), "commit", st.Commit,
+			"committed", r.log.committed, "last_index", r.log.lastIndex())
+		panic(fmt.Errorf("%s got out of range state, st.commit %d, range[%d,%d]",
+			r.describe(), st.Commit, r.log.committed, r.log.lastIndex()))
 	}
 	r.log.committed = st.Commit
 	r.term = st.Term
@@ -452,22 +459,28 @@ func (r *raft) loadState(st pb.State) {
 
 func (r *raft) restore(ss pb.Snapshot) (bool, error) {
 	if ss.Index <= r.log.committed {
-		plog.Warningf("%s, restore aborted, ss.Index <= committed", r.describe())
+		plog.Warn("restore aborted, ss.Index <= committed", "node", r.describe())
 		return false, nil
 	}
 	if !r.isNonVoting() {
 		for nid := range ss.Membership.NonVotings {
 			if nid == r.replicaID {
-				plog.Panicf("%s converting to nonVoting, index %d, committed %d, %+v",
-					r.describe(), ss.Index, r.log.committed, ss)
+				plog.Error("converting to nonVoting",
+					"node", r.describe(), "index", ss.Index,
+					"committed", r.log.committed, slog.Any("snapshot", ss))
+				panic(fmt.Errorf("%s converting to nonVoting, index %d, committed %d, %+v",
+					r.describe(), ss.Index, r.log.committed, ss))
 			}
 		}
 	}
 	if !r.isWitness() {
 		for nid := range ss.Membership.Witnesses {
 			if nid == r.replicaID {
-				plog.Panicf("%s converting to witness, index %d, committed %d, %+v",
-					r.describe(), ss.Index, r.log.committed, ss)
+				plog.Error("converting to witness",
+					"node", r.describe(), "index", ss.Index,
+					"committed", r.log.committed, slog.Any("snapshot", ss))
+				panic(fmt.Errorf("%s converting to witness, index %d, committed %d, %+v",
+					r.describe(), ss.Index, r.log.committed, ss))
 			}
 		}
 	}
@@ -481,8 +494,8 @@ func (r *raft) restore(ss pb.Snapshot) (bool, error) {
 		r.log.commitTo(ss.Index)
 		return false, nil
 	}
-	plog.Infof("%s starts to restore snapshot index %d term %d",
-		r.describe(), ss.Index, ss.Term)
+	plog.Info("starts to restore snapshot",
+		"node", r.describe(), "index", ss.Index, "term", ss.Term)
 	r.log.restore(ss)
 	return true, nil
 }
@@ -494,7 +507,8 @@ func (r *raft) restoreRemotes(ss pb.Snapshot) {
 			r.becomeFollower(r.term, r.leaderID)
 		}
 		if _, ok := r.witnesses[id]; ok {
-			plog.Panicf("Assumed witness could not promote to full member")
+			plog.Error("Assumed witness could not promote to full member")
+			panic(errors.New("Assumed witness could not promote to full member"))
 		}
 		match := uint64(0)
 		next := r.log.lastIndex() + 1
@@ -502,8 +516,9 @@ func (r *raft) restoreRemotes(ss pb.Snapshot) {
 			match = next - 1
 		}
 		r.setRemote(id, match, next)
-		plog.Debugf("%s restored remote progress of %s [%s]",
-			r.describe(), ReplicaID(id), r.remotes[id])
+		plog.Debug("restored remote progress",
+			"node", r.describe(), "replica_id", ReplicaID(id),
+			slog.Any("remote", r.remotes[id]))
 	}
 	if r.selfRemoved() && r.isLeader() {
 		r.becomeFollower(r.term, NoLeader)
@@ -516,8 +531,9 @@ func (r *raft) restoreRemotes(ss pb.Snapshot) {
 			match = next - 1
 		}
 		r.setNonVoting(id, match, next)
-		plog.Debugf("%s restored nonVoting progress of %s [%s]",
-			r.describe(), ReplicaID(id), r.nonVotings[id])
+		plog.Debug("restored nonVoting progress",
+			"node", r.describe(), "replica_id", ReplicaID(id),
+			slog.Any("remote", r.nonVotings[id]))
 	}
 	r.witnesses = make(map[uint64]*remote)
 	for id := range ss.Membership.Witnesses {
@@ -527,8 +543,9 @@ func (r *raft) restoreRemotes(ss pb.Snapshot) {
 			match = next - 1
 		}
 		r.setWitness(id, match, next)
-		plog.Debugf("%s restored witness progress of %s [%s]",
-			r.describe(), ReplicaID(id), r.witnesses[id])
+		plog.Debug("restored witness progress",
+			"node", r.describe(), "replica_id", ReplicaID(id),
+			slog.Any("remote", r.witnesses[id]))
 	}
 	r.resetMatchValueArray()
 }
@@ -663,12 +680,15 @@ func (r *raft) setRandomizedElectionTimeout() {
 
 func (r *raft) finalizeMessageTerm(m pb.Message) pb.Message {
 	if m.Term == 0 && m.Type == pb.RequestVote {
-		plog.Panicf("%s sending RequestVote with 0 term", r.describe())
+		plog.Error("sending RequestVote with 0 term", "node", r.describe())
+		panic(fmt.Errorf("%s sending RequestVote with 0 term", r.describe()))
 	}
 	if m.Term > 0 &&
 		!isRequestVoteMessage(m.Type) && m.Type != pb.RequestPreVoteResp {
-		plog.Panicf("%s term unexpectedly set for message type %d",
-			r.describe(), m.Type)
+		plog.Error("term unexpectedly set for message type",
+			"node", r.describe(), "message_type", m.Type.String())
+		panic(fmt.Errorf("%s term unexpectedly set for message type %d",
+			r.describe(), m.Type))
 	}
 	if !isRequestMessage(m.Type) &&
 		!isRequestVoteMessage(m.Type) && m.Type != pb.RequestPreVoteResp {
@@ -685,10 +705,11 @@ func (r *raft) send(m pb.Message) {
 
 func (r *raft) sendRateLimitMessage() {
 	if r.isLeader() {
-		plog.Panicf("leader node called sendRateLimitMessage")
+		plog.Error("leader node called sendRateLimitMessage")
+		panic(errors.New("leader node called sendRateLimitMessage"))
 	}
 	if r.leaderID == NoLeader {
-		plog.Infof("%s rate limit message skipped, no leader", r.describe())
+		plog.Info("rate limit message skipped, no leader", "node", r.describe())
 		return
 	}
 	if !r.rl.Enabled() {
@@ -712,7 +733,8 @@ func (r *raft) makeInstallSnapshotMessage(to uint64, m *pb.Message) uint64 {
 	m.Type = pb.InstallSnapshot
 	snapshot := r.log.snapshot()
 	if pb.IsEmptySnapshot(snapshot) {
-		plog.Panicf("%s got an empty snapshot", r.describe())
+		plog.Error("got an empty snapshot", "node", r.describe())
+		panic(fmt.Errorf("%s got an empty snapshot", r.describe()))
 	}
 	// For witness, snapshot message will be marked as dummy snapshot.
 	if _, ok := r.witnesses[to]; ok {
@@ -746,8 +768,10 @@ func (r *raft) makeReplicateMessage(to uint64,
 		lastIndex := entries[len(entries)-1].Index
 		expected := next - 1 + uint64(len(entries))
 		if lastIndex != expected {
-			plog.Panicf("%s expected last index in Replicate %d, got %d",
-				r.describe(), expected, lastIndex)
+			plog.Error("unexpected last index in Replicate",
+				"node", r.describe(), "expected", expected, "last_index", lastIndex)
+			panic(fmt.Errorf("%s expected last index in Replicate %d, got %d",
+				r.describe(), expected, lastIndex))
 		}
 	}
 	// Don't send actual log entry to witness as they won't replicate real message,
@@ -790,7 +814,8 @@ func (r *raft) sendReplicateMessage(to uint64) {
 	} else {
 		rp, ok = r.witnesses[to]
 		if !ok {
-			plog.Panicf("%s failed to get the remote instance", r.describe())
+			plog.Error("failed to get the remote instance", "node", r.describe())
+			panic(fmt.Errorf("%s failed to get the remote instance", r.describe()))
 		}
 	}
 	if rp.isPaused() {
@@ -800,13 +825,14 @@ func (r *raft) sendReplicateMessage(to uint64) {
 	if err != nil {
 		// log not available due to compaction, send snapshot
 		if !rp.isActive() {
-			plog.Warningf("%s, %s is not active, sending snapshot is skipped",
-				r.describe(), ReplicaID(to))
+			plog.Warn("remote is not active, sending snapshot is skipped",
+				"node", r.describe(), "replica_id", ReplicaID(to))
 			return
 		}
 		index := r.makeInstallSnapshotMessage(to, &m)
-		plog.Infof("%s is sending snapshot (%d) to %s, r.Next %d, r.Match %d, %v",
-			r.describe(), index, ReplicaID(to), rp.next, rp.match, err)
+		plog.Info("sending snapshot",
+			"node", r.describe(), "index", index, "replica_id", ReplicaID(to),
+			"next", rp.next, "match", rp.match, "error", err)
 		rp.becomeSnapshot(index)
 	} else if len(m.Entries) > 0 {
 		lastIndex := m.Entries[len(m.Entries)-1].Index
@@ -819,7 +845,8 @@ func (r *raft) broadcastReplicateMessage() {
 	r.mustBeLeader()
 	for nid := range r.nonVotings {
 		if nid == r.replicaID {
-			plog.Panicf("%s nonVoting is broadcasting Replicate msg", r.describe())
+			plog.Error("nonVoting is broadcasting Replicate msg", "node", r.describe())
+			panic(fmt.Errorf("%s nonVoting is broadcasting Replicate msg", r.describe()))
 		}
 	}
 	for _, nid := range r.nodes() {
@@ -955,7 +982,7 @@ func (r *raft) toFollowerState(term uint64, leaderID uint64,
 	r.state = follower
 	r.reset(term, resetElectionTimeout)
 	r.setLeaderID(leaderID)
-	plog.Infof("%s became follower", r.describe())
+	plog.Info("became follower", "node", r.describe())
 }
 
 func (r *raft) becomeNonVoting(term uint64, leaderID uint64) {
@@ -967,7 +994,7 @@ func (r *raft) becomeNonVoting(term uint64, leaderID uint64) {
 	}
 	r.reset(term, true)
 	r.setLeaderID(leaderID)
-	plog.Infof("%s became nonVoting", r.describe())
+	plog.Info("became nonVoting", "node", r.describe())
 }
 
 func (r *raft) becomeWitness(term uint64, leaderID uint64) {
@@ -976,7 +1003,7 @@ func (r *raft) becomeWitness(term uint64, leaderID uint64) {
 	}
 	r.reset(term, true)
 	r.setLeaderID(leaderID)
-	plog.Infof("%s became witness", r.describe())
+	plog.Info("became witness", "node", r.describe())
 }
 
 func (r *raft) becomeFollower(term uint64, leaderID uint64) {
@@ -1003,7 +1030,7 @@ func (r *raft) becomePreVoteCandidate() {
 	r.state = preVoteCandidate
 	r.reset(r.term, true)
 	r.setLeaderID(NoLeader)
-	plog.Warningf("%s became PreVote candidate", r.describe())
+	plog.Warn("became PreVote candidate", "node", r.describe())
 }
 
 func (r *raft) becomeCandidate() {
@@ -1021,19 +1048,21 @@ func (r *raft) becomeCandidate() {
 	r.reset(r.term+1, true)
 	r.setLeaderID(NoLeader)
 	r.vote = r.replicaID
-	plog.Warningf("%s became candidate", r.describe())
+	plog.Warn("became candidate", "node", r.describe())
 }
 
 func (r *raft) becomeLeader() {
 	// need a state transition machine
 	if !r.isLeader() && !r.isCandidate() {
-		plog.Panicf("transitioning to leader state from %v", r.state.String())
+		plog.Error("transitioning to leader state from unexpected state",
+			"state", r.state.String())
+		panic(fmt.Errorf("transitioning to leader state from %v", r.state.String()))
 	}
 	r.state = leader
 	r.reset(r.term, true)
 	r.setLeaderID(r.replicaID)
 	r.preLeaderPromotionHandleConfigChange()
-	plog.Infof("%s became leader", r.describe())
+	plog.Info("became leader", "node", r.describe())
 	// p72 of the raft thesis
 	r.appendEntries([]pb.Entry{{Type: pb.ApplicationEntry, Cmd: nil}})
 }
@@ -1064,9 +1093,10 @@ func (r *raft) reset(term uint64, resetElectionTimeout bool) {
 func (r *raft) preLeaderPromotionHandleConfigChange() {
 	n := r.getPendingConfigChangeCount()
 	if n > 1 {
-		plog.Panicf("%s multiple uncommitted config change entries", r.describe())
+		plog.Error("multiple uncommitted config change entries", "node", r.describe())
+		panic(fmt.Errorf("%s multiple uncommitted config change entries", r.describe()))
 	} else if n == 1 {
-		plog.Infof("%s becoming leader with pending ConfigChange", r.describe())
+		plog.Info("becoming leader with pending ConfigChange", "node", r.describe())
 		r.setPendingConfigChange()
 	}
 }
@@ -1117,11 +1147,11 @@ func (r *raft) handleVoteResp(from uint64, rejected bool, preVote bool) int {
 		mname = "RequestPreVoteResp"
 	}
 	if rejected {
-		plog.Warningf("%s received %s rejection from %s",
-			r.describe(), mname, ReplicaID(from))
+		plog.Warn("received rejection",
+			"node", r.describe(), "message_type", mname, "replica_id", ReplicaID(from))
 	} else {
-		plog.Warningf("%s received %s from %s",
-			r.describe(), mname, ReplicaID(from))
+		plog.Warn("received response",
+			"node", r.describe(), "message_type", mname, "replica_id", ReplicaID(from))
 	}
 	votedFor := 0
 	if _, ok := r.votes[from]; !ok {
@@ -1157,7 +1187,7 @@ func (r *raft) preVoteCampaign() error {
 			LogIndex: index,
 			LogTerm:  lastTerm,
 		})
-		plog.Warningf("%s sent RequestPreVote to %s", r.describe(), ReplicaID(k))
+		plog.Warn("sent RequestPreVote", "node", r.describe(), "replica_id", ReplicaID(k))
 	}
 	return nil
 }
@@ -1200,7 +1230,7 @@ func (r *raft) campaign() error {
 			LogTerm:  lastTerm,
 			Hint:     hint,
 		})
-		plog.Warningf("%s sent RequestVote to %s", r.describe(), ReplicaID(k))
+		plog.Warn("sent RequestVote", "node", r.describe(), "replica_id", ReplicaID(k))
 	}
 	return nil
 }
@@ -1225,7 +1255,8 @@ func (r *raft) selfRemoved() bool {
 func (r *raft) addNode(replicaID uint64) {
 	r.clearPendingConfigChange()
 	if replicaID == r.replicaID && r.isWitness() {
-		plog.Panicf("%s is witness", r.describe())
+		plog.Error("is witness", "node", r.describe())
+		panic(fmt.Errorf("%s is witness", r.describe()))
 	}
 	if _, ok := r.remotes[replicaID]; ok {
 		// already a voting member
@@ -1249,7 +1280,8 @@ func (r *raft) addNode(replicaID uint64) {
 func (r *raft) addNonVoting(replicaID uint64) {
 	r.clearPendingConfigChange()
 	if replicaID == r.replicaID && !r.isNonVoting() {
-		plog.Panicf("%s is not a nonVoting", r.describe())
+		plog.Error("is not a nonVoting", "node", r.describe())
+		panic(fmt.Errorf("%s is not a nonVoting", r.describe()))
 	}
 	if _, ok := r.nonVotings[replicaID]; ok {
 		return
@@ -1260,7 +1292,8 @@ func (r *raft) addNonVoting(replicaID uint64) {
 func (r *raft) addWitness(replicaID uint64) {
 	r.clearPendingConfigChange()
 	if replicaID == r.replicaID && !r.isWitness() {
-		plog.Panicf("%s is not witness", r.describe())
+		plog.Error("is not witness", "node", r.describe())
+		panic(fmt.Errorf("%s is not witness", r.describe()))
 	}
 	if _, ok := r.witnesses[replicaID]; ok {
 		return
@@ -1300,8 +1333,9 @@ func (r *raft) deleteWitness(replicaID uint64) {
 }
 
 func (r *raft) setRemote(replicaID uint64, match uint64, next uint64) {
-	plog.Debugf("%s set remote %s, match %d, next %d",
-		r.describe(), ReplicaID(replicaID), match, next)
+	plog.Debug("set remote",
+		"node", r.describe(), "replica_id", ReplicaID(replicaID),
+		"match", match, "next", next)
 	r.remotes[replicaID] = &remote{
 		next:  next,
 		match: match,
@@ -1309,8 +1343,9 @@ func (r *raft) setRemote(replicaID uint64, match uint64, next uint64) {
 }
 
 func (r *raft) setNonVoting(replicaID uint64, match uint64, next uint64) {
-	plog.Debugf("%s set nonVoting %s, match %d, next %d",
-		r.describe(), ReplicaID(replicaID), match, next)
+	plog.Debug("set nonVoting",
+		"node", r.describe(), "replica_id", ReplicaID(replicaID),
+		"match", match, "next", next)
 	r.nonVotings[replicaID] = &remote{
 		next:  next,
 		match: match,
@@ -1318,8 +1353,9 @@ func (r *raft) setNonVoting(replicaID uint64, match uint64, next uint64) {
 }
 
 func (r *raft) setWitness(replicaID uint64, match uint64, next uint64) {
-	plog.Debugf("%s set witness %s, match %d, next %d",
-		r.describe(), ReplicaID(replicaID), match, next)
+	plog.Debug("set witness",
+		"node", r.describe(), "replica_id", ReplicaID(replicaID),
+		"match", match, "next", next)
 	r.witnesses[replicaID] = &remote{
 		next:  next,
 		match: match,
@@ -1372,7 +1408,8 @@ func (r *raft) getPendingConfigChangeCount() int {
 	for {
 		ents, err := r.log.entries(idx, maxEntriesToApplySize)
 		if err != nil {
-			plog.Panicf("%s failed to get entries %v", r.describe(), err)
+			plog.Error("failed to get entries", "node", r.describe(), "error", err)
+			panic(fmt.Errorf("%s failed to get entries %w", r.describe(), err))
 		}
 		if len(ents) == 0 {
 			return count
@@ -1398,8 +1435,8 @@ func (r *raft) handleHeartbeatMessage(m pb.Message) error {
 }
 
 func (r *raft) handleInstallSnapshotMessage(m pb.Message) error {
-	plog.Debugf("%s called handleInstallSnapshotMessage with snapshot from %s",
-		r.describe(), ReplicaID(m.From))
+	plog.Debug("called handleInstallSnapshotMessage with snapshot",
+		"node", r.describe(), "replica_id", ReplicaID(m.From))
 	index, term := m.Snapshot.Index, m.Snapshot.Term
 	resp := pb.Message{
 		To:   m.From,
@@ -1410,10 +1447,12 @@ func (r *raft) handleInstallSnapshotMessage(m pb.Message) error {
 		return err
 	}
 	if ok {
-		plog.Debugf("%s restored snapshot %d term %d", r.describe(), index, term)
+		plog.Debug("restored snapshot",
+			"node", r.describe(), "index", index, "term", term)
 		resp.LogIndex = r.log.lastIndex()
 	} else {
-		plog.Debugf("%s rejected snapshot %d term %d", r.describe(), index, term)
+		plog.Debug("rejected snapshot",
+			"node", r.describe(), "index", index, "term", term)
 		resp.LogIndex = r.log.committed
 		if r.events != nil {
 			info := server.SnapshotInfo{
@@ -1452,8 +1491,9 @@ func (r *raft) handleReplicateMessage(m pb.Message) error {
 		r.log.commitTo(min(lastIdx, m.Commit))
 		resp.LogIndex = lastIdx
 	} else {
-		plog.Debugf("%s rejected Replicate index %d term %d from %s",
-			r.describe(), m.LogIndex, m.Term, ReplicaID(m.From))
+		plog.Debug("rejected Replicate",
+			"node", r.describe(), "index", m.LogIndex, "term", m.Term,
+			"replica_id", ReplicaID(m.From))
 		resp.Reject = true
 		resp.LogIndex = m.LogIndex
 		resp.Hint = r.log.lastIndex()
@@ -1499,8 +1539,8 @@ func (r *raft) dropRequestVoteFromHighTermNode(m pb.Message) bool {
 	}
 	// see p42 of the raft thesis
 	if m.Hint == m.From {
-		plog.Debugf("%s, RequestVote with leader transfer hint received from %s",
-			r.describe(), ReplicaID(m.From))
+		plog.Debug("RequestVote with leader transfer hint received",
+			"node", r.describe(), "replica_id", ReplicaID(m.From))
 		return false
 	}
 	if r.isLeader() && !r.quiesce && r.electionTick >= r.electionTimeout {
@@ -1531,14 +1571,15 @@ func (r *raft) onMessageTermNotMatched(m pb.Message) bool {
 		return false
 	}
 	if r.dropRequestVoteFromHighTermNode(m) {
-		plog.Warningf("%s dropped RequestVote at term %d from %s, leader available",
-			r.describe(), m.Term, ReplicaID(m.From))
+		plog.Warn("dropped RequestVote, leader available",
+			"node", r.describe(), "term", m.Term, "replica_id", ReplicaID(m.From))
 		return true
 	}
 	if m.Term > r.term {
 		if !isPreVoteMessageWithExpectedHigherTerm(m) {
-			plog.Warningf("%s received %s with higher term (%d) from %s",
-				r.describe(), m.Type, m.Term, ReplicaID(m.From))
+			plog.Warn("received message with higher term",
+				"node", r.describe(), "message_type", m.Type.String(),
+				"term", m.Term, "replica_id", ReplicaID(m.From))
 			leaderID := NoLeader
 			if isLeaderMessage(m.Type) {
 				leaderID = m.From
@@ -1549,8 +1590,8 @@ func (r *raft) onMessageTermNotMatched(m pb.Message) bool {
 				r.becomeWitness(m.Term, leaderID)
 			} else {
 				if m.Type == pb.RequestVote {
-					plog.Warningf("%s become followerKE after receiving higher term from %s",
-						r.describe(), ReplicaID(m.From))
+					plog.Warn("become followerKE after receiving higher term",
+						"node", r.describe(), "replica_id", ReplicaID(m.From))
 					// not to reset the electionTick value to avoid the risk of having the
 					// local node not being to campaign at all. if the local node generates
 					// the tick much slower than other nodes (e.g. bad config, hardware
@@ -1558,8 +1599,8 @@ func (r *raft) onMessageTermNotMatched(m pb.Message) bool {
 					// to ever start a campaign unless we keep its electionTick value here.
 					r.becomeFollowerKE(m.Term, leaderID)
 				} else {
-					plog.Warningf("%s become follower after receiving higher term from %s",
-						r.describe(), ReplicaID(m.From))
+					plog.Warn("become follower after receiving higher term",
+						"node", r.describe(), "replica_id", ReplicaID(m.From))
 					r.becomeFollower(m.Term, leaderID)
 				}
 			}
@@ -1570,8 +1611,9 @@ func (r *raft) onMessageTermNotMatched(m pb.Message) bool {
 			// see test TestFreeStuckCandidateWithCheckQuorum for details
 			r.send(pb.Message{To: m.From, Type: pb.NoOP})
 		} else {
-			plog.Infof("%s ignored %s with lower term (%d) from %s",
-				r.describe(), m.Type, m.Term, ReplicaID(m.From))
+			plog.Info("ignored message with lower term",
+				"node", r.describe(), "message_type", m.Type.String(),
+				"term", m.Term, "replica_id", ReplicaID(m.From))
 		}
 		return true
 	}
@@ -1592,8 +1634,9 @@ func (r *raft) Handle(m pb.Message) error {
 		}
 		return r.handle(r, m)
 	}
-	plog.Infof("%s dropped %s from %s, term %d, term not matched",
-		r.describe(), m.Type, ReplicaID(m.From), m.Term)
+	plog.Info("dropped message, term not matched",
+		"node", r.describe(), "message_type", m.Type.String(),
+		"replica_id", ReplicaID(m.From), "term", m.Term)
 	return nil
 }
 
@@ -1631,8 +1674,7 @@ func (r *raft) handleNodeElection(m pb.Message) error {
 		// ignore the Election message when there is membership configure change
 		// committed but not applied
 		if r.hasConfigChangeToApply() {
-			plog.Warningf("%s campaign skipped, pending config change",
-				r.describe())
+			plog.Warn("campaign skipped, pending config change", "node", r.describe())
 			if r.events != nil {
 				info := server.CampaignInfo{
 					ShardID:   r.shardID,
@@ -1646,13 +1688,13 @@ func (r *raft) handleNodeElection(m pb.Message) error {
 		// prevote is enabled, but the user explicitly requested the leadership to
 		// be transferred, so skip the pre-vote stage
 		if r.preVote && !r.isLeaderTransferTarget {
-			plog.Debugf("%s will start a preVote campaign", r.describe())
+			plog.Debug("will start a preVote campaign", "node", r.describe())
 			return r.preVoteCampaign()
 		}
-		plog.Debugf("%s will start a campaign", r.describe())
+		plog.Debug("will start a campaign", "node", r.describe())
 		return r.campaign()
 	}
-	plog.Debugf("%s is leader, ignored Election", r.describe())
+	plog.Debug("is leader, ignored Election", "node", r.describe())
 	return nil
 }
 
@@ -1670,12 +1712,15 @@ func (r *raft) handleNodeRequestPreVote(m pb.Message) error {
 	}
 	if m.Term > r.term && isUpToDate {
 		resp.Term = m.Term
-		plog.Warningf("%s cast preVote from %s index %d term %d, log term: %d",
-			r.describe(), ReplicaID(m.From), m.LogIndex, m.Term, m.LogTerm)
+		plog.Warn("cast preVote",
+			"node", r.describe(), "replica_id", ReplicaID(m.From),
+			"index", m.LogIndex, "term", m.Term, "log_term", m.LogTerm)
 	} else {
 		// m.Term == r.term || !isUpToDate
-		plog.Warningf("%s rejected preVote %s index %d term %d,logterm %d, utd %t",
-			r.describe(), ReplicaID(m.From), m.LogIndex, m.Term, m.LogTerm, isUpToDate)
+		plog.Warn("rejected preVote",
+			"node", r.describe(), "replica_id", ReplicaID(m.From),
+			"index", m.LogIndex, "term", m.Term, "log_term", m.LogTerm,
+			"up_to_date", isUpToDate)
 		resp.Term = r.term
 		resp.Reject = true
 	}
@@ -1696,14 +1741,16 @@ func (r *raft) handleNodeRequestVote(m pb.Message) error {
 		return err
 	}
 	if canGrant && isUpToDate {
-		plog.Warningf("%s cast vote from %s index %d term %d, log term: %d",
-			r.describe(), ReplicaID(m.From), m.LogIndex, m.Term, m.LogTerm)
+		plog.Warn("cast vote",
+			"node", r.describe(), "replica_id", ReplicaID(m.From),
+			"index", m.LogIndex, "term", m.Term, "log_term", m.LogTerm)
 		r.electionTick = 0
 		r.vote = m.From
 	} else {
-		plog.Warningf("%s rejected vote %s index%d term%d,logterm%d,grant%v,utd%v",
-			r.describe(), ReplicaID(m.From), m.LogIndex, m.Term,
-			m.LogTerm, canGrant, isUpToDate)
+		plog.Warn("rejected vote",
+			"node", r.describe(), "replica_id", ReplicaID(m.From),
+			"index", m.LogIndex, "term", m.Term, "log_term", m.LogTerm,
+			"can_grant", canGrant, "up_to_date", isUpToDate)
 		resp.Reject = true
 	}
 	r.send(resp)
@@ -1774,7 +1821,7 @@ func (r *raft) handleLeaderHeartbeat(m pb.Message) error {
 func (r *raft) handleLeaderCheckQuorum(m pb.Message) error {
 	r.mustBeLeader()
 	if !r.leaderHasQuorum() {
-		plog.Warningf("%s has lost quorum", r.describe())
+		plog.Warn("has lost quorum", "node", r.describe())
 		r.becomeFollower(r.term, NoLeader)
 	}
 	return nil
@@ -1783,14 +1830,14 @@ func (r *raft) handleLeaderCheckQuorum(m pb.Message) error {
 func (r *raft) handleLeaderPropose(m pb.Message) error {
 	r.mustBeLeader()
 	if r.leaderTransfering() {
-		plog.Warningf("%s dropped proposal, leader transferring", r.describe())
+		plog.Warn("dropped proposal, leader transferring", "node", r.describe())
 		r.reportDroppedProposal(m)
 		return nil
 	}
 	for i, e := range m.Entries {
 		if e.Type == pb.ConfigChangeEntry {
 			if r.hasPendingConfigChange() {
-				plog.Warningf("%s dropped config change, pending change", r.describe())
+				plog.Warn("dropped config change, pending change", "node", r.describe())
 				r.reportDroppedConfigChange(m.Entries[i])
 				m.Entries[i] = pb.Entry{Type: pb.ApplicationEntry}
 			}
@@ -1810,7 +1857,8 @@ func (r *raft) hasCommittedEntryAtCurrentTerm() bool {
 	}
 	lastCommittedTerm, err := r.log.term(r.log.committed)
 	if err != nil && !errors.Is(err, ErrCompacted) {
-		plog.Panicf("%s failed to get term, %v", r.describe(), err)
+		plog.Error("failed to get term", "node", r.describe(), "error", err)
+		panic(fmt.Errorf("%s failed to get term, %w", r.describe(), err))
 	}
 	return lastCommittedTerm == r.term
 }
@@ -1835,13 +1883,14 @@ func (r *raft) handleLeaderReadIndex(m pb.Message) error {
 		Low:  m.Hint,
 	}
 	if _, wok := r.witnesses[m.From]; wok {
-		plog.Errorf("%s dropped ReadIndex, witness node %d", r.describe(), m.From)
+		plog.Error("dropped ReadIndex, witness node",
+			"node", r.describe(), "replica_id", m.From)
 	} else if !r.isSingleNodeQuorum() {
 		if !r.hasCommittedEntryAtCurrentTerm() {
 			// leader doesn't know the commit value of the shard
 			// see raft thesis section 6.4, this is the first step of the ReadIndex
 			// protocol.
-			plog.Warningf("%s dropped ReadIndex, not ready", r.describe())
+			plog.Warn("dropped ReadIndex, not ready", "node", r.describe())
 			r.reportDroppedReadIndex(m)
 			return nil
 		}
@@ -1912,21 +1961,22 @@ func (r *raft) handleLeaderHeartbeatResp(m pb.Message, rp *remote) error {
 func (r *raft) handleLeaderTransfer(m pb.Message) error {
 	r.mustBeLeader()
 	target := m.Hint
-	plog.Debugf("%s called handleLeaderTransfer, target %d", r.describe(), target)
+	plog.Debug("called handleLeaderTransfer", "node", r.describe(), "target", target)
 	if target == NoNode {
-		plog.Panicf("%s leader transfer target not set", r.describe())
+		plog.Error("leader transfer target not set", "node", r.describe())
+		panic(fmt.Errorf("%s leader transfer target not set", r.describe()))
 	}
 	if r.leaderTransfering() {
-		plog.Warningf("LeaderTransfer ignored, leader transfer is ongoing")
+		plog.Warn("LeaderTransfer ignored, leader transfer is ongoing")
 		return nil
 	}
 	if r.replicaID == target {
-		plog.Warningf("received LeaderTransfer with target pointing to itself")
+		plog.Warn("received LeaderTransfer with target pointing to itself")
 		return nil
 	}
 	rp, ok := r.remotes[target]
 	if !ok {
-		plog.Warningf("unknown LeaderTransfer target")
+		plog.Warn("unknown LeaderTransfer target")
 		return nil
 	}
 	r.leaderTransferTarget = target
@@ -1967,11 +2017,11 @@ func (r *raft) handleLeaderSnapshotStatus(m pb.Message, rp *remote) error {
 	if m.Hint == 0 {
 		if m.Reject {
 			rp.clearPendingSnapshot()
-			plog.Warningf("%s snapshot failed, %s is now in wait state",
-				r.describe(), ReplicaID(m.From))
+			plog.Warn("snapshot failed, remote is now in wait state",
+				"node", r.describe(), "replica_id", ReplicaID(m.From))
 		} else {
-			plog.Debugf("%s snapshot succeeded, %s in wait state now, next %d",
-				r.describe(), ReplicaID(m.From), rp.next)
+			plog.Debug("snapshot succeeded, remote in wait state now",
+				"node", r.describe(), "replica_id", ReplicaID(m.From), "next", rp.next)
 		}
 		rp.becomeWait()
 	} else {
@@ -1982,8 +2032,8 @@ func (r *raft) handleLeaderSnapshotStatus(m pb.Message, rp *remote) error {
 }
 
 func (r *raft) handleLeaderUnreachable(m pb.Message, rp *remote) error {
-	plog.Debugf("%s received Unreachable, %s entered retry state",
-		r.describe(), ReplicaID(m.From))
+	plog.Debug("received Unreachable, remote entered retry state",
+		"node", r.describe(), "replica_id", ReplicaID(m.From))
 	r.enterRetryState(rp)
 	return nil
 }
@@ -1992,7 +2042,7 @@ func (r *raft) handleLeaderRateLimit(m pb.Message) error {
 	if r.rl.Enabled() {
 		r.rl.SetFollowerState(m.From, m.Hint)
 	} else {
-		plog.Warningf("%s dropped rate limit msg, rl disabled", r.describe())
+		plog.Warn("dropped rate limit msg, rl disabled", "node", r.describe())
 	}
 	return nil
 }
@@ -2089,7 +2139,7 @@ func (r *raft) handleWitnessSnapshot(m pb.Message) error {
 
 func (r *raft) handleFollowerPropose(m pb.Message) error {
 	if r.leaderID == NoLeader {
-		plog.Warningf("%s dropped proposal, no leader", r.describe())
+		plog.Warn("dropped proposal, no leader", "node", r.describe())
 		r.reportDroppedProposal(m)
 		return nil
 	}
@@ -2120,7 +2170,7 @@ func (r *raft) handleFollowerHeartbeat(m pb.Message) error {
 
 func (r *raft) handleFollowerReadIndex(m pb.Message) error {
 	if r.leaderID == NoLeader {
-		plog.Warningf("%s dropped ReadIndex, no leader", r.describe())
+		plog.Warn("dropped ReadIndex, no leader", "node", r.describe())
 		r.reportDroppedReadIndex(m)
 		return nil
 	}
@@ -2131,7 +2181,7 @@ func (r *raft) handleFollowerReadIndex(m pb.Message) error {
 
 func (r *raft) handleFollowerLeaderTransfer(m pb.Message) error {
 	if r.leaderID == NoLeader {
-		plog.Warningf("%s dropped LeaderTransfer, no leader", r.describe())
+		plog.Warn("dropped LeaderTransfer, no leader", "node", r.describe())
 		return nil
 	}
 	m.To = r.leaderID
@@ -2159,7 +2209,7 @@ func (r *raft) handleFollowerInstallSnapshot(m pb.Message) error {
 func (r *raft) handleFollowerTimeoutNow(m pb.Message) error {
 	// the last paragraph, p29 of the raft thesis mentions that this is nothing
 	// different from the clock moving forward quickly
-	plog.Debugf("%s TimeoutNow received", r.describe())
+	plog.Debug("TimeoutNow received", "node", r.describe())
 	r.electionTick = r.randomizedElectionTimeout
 	r.isLeaderTransferTarget = true
 	if err := r.tick(); err != nil {
@@ -2177,18 +2227,19 @@ func (r *raft) handleFollowerTimeoutNow(m pb.Message) error {
 
 func (r *raft) doubleCheckTermMatched(msgTerm uint64) {
 	if msgTerm != 0 && r.term != msgTerm {
-		plog.Panicf("%s mismatched term found", r.describe())
+		plog.Error("mismatched term found", "node", r.describe())
+		panic(fmt.Errorf("%s mismatched term found", r.describe()))
 	}
 }
 
 func (r *raft) handleCandidatePropose(m pb.Message) error {
-	plog.Warningf("%s dropped proposal, no leader", r.describe())
+	plog.Warn("dropped proposal, no leader", "node", r.describe())
 	r.reportDroppedProposal(m)
 	return nil
 }
 
 func (r *raft) handleCandidateReadIndex(m pb.Message) error {
-	plog.Warningf("%s dropped read index, no leader", r.describe())
+	plog.Warn("dropped read index, no leader", "node", r.describe())
 	r.reportDroppedReadIndex(m)
 	ctx := pb.SystemCtx{
 		Low:  m.Hint,
@@ -2221,12 +2272,13 @@ func (r *raft) handleCandidateHeartbeat(m pb.Message) error {
 
 func (r *raft) handleCandidateRequestVoteResp(m pb.Message) error {
 	if _, ok := r.nonVotings[m.From]; ok {
-		plog.Warningf("dropped RequestVoteResp from nonVoting")
+		plog.Warn("dropped RequestVoteResp from nonVoting")
 		return nil
 	}
 	count := r.handleVoteResp(m.From, m.Reject, false)
-	plog.Warningf("%s received %d votes and %d rejections, quorum is %d",
-		r.describe(), count, len(r.votes)-count, r.quorum())
+	plog.Warn("received votes",
+		"node", r.describe(), "votes", count,
+		"rejections", len(r.votes)-count, "quorum", r.quorum())
 	// 3rd paragraph section 5.2 of the raft paper
 	if count == r.quorum() {
 		r.becomeLeader()
@@ -2245,12 +2297,13 @@ func (r *raft) handleCandidateRequestVoteResp(m pb.Message) error {
 
 func (r *raft) handlePreVoteCandidateRequestPreVoteResp(m pb.Message) error {
 	if _, ok := r.nonVotings[m.From]; ok {
-		plog.Warningf("dropped RequestPreVoteResp from nonVoting")
+		plog.Warn("dropped RequestPreVoteResp from nonVoting")
 		return nil
 	}
 	count := r.handleVoteResp(m.From, m.Reject, true)
-	plog.Warningf("%s received %d preVotes and %d rejections, quorum is %d",
-		r.describe(), count, len(r.votes)-count, r.quorum())
+	plog.Warn("received preVotes",
+		"node", r.describe(), "votes", count,
+		"rejections", len(r.votes)-count, "quorum", r.quorum())
 	if count == r.quorum() {
 		if err := r.campaign(); err != nil {
 			return err
@@ -2302,7 +2355,8 @@ func lw(r *raft, f func(m pb.Message, rp *remote) error) handlerFunc {
 		} else if wob, ok := r.witnesses[nm.From]; ok {
 			return f(nm, wob)
 		} else {
-			plog.Warningf("%s no remote for %s", r.describe(), ReplicaID(nm.From))
+			plog.Warn("no remote for replica",
+				"node", r.describe(), "replica_id", ReplicaID(nm.From))
 			return nil
 		}
 	}

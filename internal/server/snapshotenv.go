@@ -82,10 +82,13 @@ func GetSnapshotFilename(index uint64) string {
 
 func mustBeChild(parent string, child string) {
 	if v, err := filepath.Rel(parent, child); err != nil {
-		plog.Panicf("%+v", err)
+		plog.Error("failed to resolve relative path",
+			"error", fmt.Sprintf("%+v", err))
+		panic(err)
 	} else if len(v) == 0 || strings.Contains(v, string(filepath.Separator)) ||
 		strings.HasPrefix(v, ".") {
-		plog.Panicf("not a direct child, %s", v)
+		plog.Error("not a direct child", "path", v)
+		panic(fmt.Errorf("not a direct child, %v", v))
 	}
 }
 

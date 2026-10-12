@@ -15,6 +15,7 @@
 package dragonboat
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/cockroachdb/errors"
@@ -38,9 +39,9 @@ func compressionType(ct pb.CompressionType) dio.CompressionType {
 	case pb.Snappy:
 		return dio.Snappy
 	default:
-		plog.Panicf("unknown compression type: %d", ct)
+		plog.Error("unknown compression type", "type", ct)
+		panic(fmt.Errorf("unknown compression type: %v", ct))
 	}
-	panic("will never reach here")
 }
 
 var (
@@ -94,7 +95,7 @@ func (s *snapshotter) Stream(streamable rsm.IStreamable,
 	cw := dio.NewCompressor(ct, rsm.NewChunkWriter(sink, meta))
 	if err := streamable.Stream(meta.Ctx, cw); err != nil {
 		if cerr := sink.Close(); cerr != nil {
-			plog.Errorf("failed to close the sink %v", cerr)
+			plog.Error("failed to close the sink", "error", cerr)
 		}
 		return err
 	}
@@ -209,7 +210,7 @@ func (s *snapshotter) Shrink(index uint64) error {
 		env := s.getEnv(index)
 		fp := env.GetFilepath()
 		shrunk := env.GetShrinkedFilepath()
-		plog.Infof("%s shrinking %s", s.id(), s.ssid(index))
+		plog.Info("shrinking snapshot", "id", s.id(), "snapshot", s.ssid(index))
 		if err := rsm.ShrinkSnapshot(fp, shrunk, s.fs); err != nil {
 			return err
 		}
@@ -224,11 +225,13 @@ func (s *snapshotter) Compact(index uint64) error {
 		return err
 	}
 	if ss.Index <= index {
-		plog.Panicf("%s invalid compaction, LogDB snapshot %d, index %d",
-			s.id(), ss.Index, index)
+		plog.Error("invalid compaction",
+			"id", s.id(), "logdb_snapshot", ss.Index, "index", index)
+		panic(fmt.Errorf("%v invalid compaction, LogDB snapshot %v, index %v",
+			s.id(), ss.Index, index))
 	}
-	plog.Debugf("%s called Compact, latest %d, to compact %d",
-		s.id(), ss.Index, index)
+	plog.Debug("called Compact",
+		"id", s.id(), "latest", ss.Index, "index", index)
 	if err := s.remove(index); err != nil {
 		return err
 	}
@@ -302,7 +305,8 @@ func (s *snapshotter) processOrphans() error {
 				return err
 			}
 			if pb.IsEmptySnapshot(ss) {
-				plog.Panicf("empty snapshot found in %s", fdir)
+				plog.Error("empty snapshot found", "dir", fdir)
+				panic(fmt.Errorf("empty snapshot found in %v", fdir))
 			}
 			remove := false
 			if noss {
@@ -354,7 +358,8 @@ func (s *snapshotter) getEnv(index uint64) server.SSEnv {
 func (s *snapshotter) getCustomEnv(meta rsm.SSMeta) server.SSEnv {
 	if meta.Request.Exported() {
 		if len(meta.Request.Path) == 0 {
-			plog.Panicf("Path is empty when exporting snapshot")
+			plog.Error("Path is empty when exporting snapshot")
+			panic(errors.New("Path is empty when exporting snapshot"))
 		}
 		gp := func(shardID uint64, replicaID uint64) string {
 			return meta.Request.Path
@@ -381,12 +386,13 @@ func (s *snapshotter) parseIndex(dir string) uint64 {
 	if parts := server.SnapshotDirNamePartsRe.FindStringSubmatch(dir); len(parts) == 2 {
 		index, err := strconv.ParseUint(parts[1], 16, 64)
 		if err != nil {
-			plog.Panicf("failed to parse index %s", parts[1])
+			plog.Error("failed to parse index", "index", parts[1])
+			panic(fmt.Errorf("failed to parse index %v", parts[1]))
 		}
 		return index
 	}
-	plog.Panicf("unknown snapshot fold name: %s", dir)
-	return 0
+	plog.Error("unknown snapshot fold name", "dir", dir)
+	panic(fmt.Errorf("unknown snapshot fold name: %v", dir))
 }
 
 func (s *snapshotter) isSnapshot(dir string) bool {

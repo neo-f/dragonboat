@@ -16,6 +16,7 @@ package transport
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
@@ -118,7 +119,7 @@ func (j *job) close() {
 func (j *job) connect(addr string) error {
 	conn, err := j.transport.GetSnapshotConnection(j.ctx, addr)
 	if err != nil {
-		plog.Errorf("failed to get a job to %s, %v", addr, err)
+		plog.Error("failed to get a job", "address", addr, "error", err)
 		return err
 	}
 	j.conn = conn
@@ -127,7 +128,9 @@ func (j *job) connect(addr string) error {
 
 func (j *job) addSnapshot(chunks []pb.Chunk) {
 	if len(chunks) != cap(j.ch) {
-		plog.Panicf("cap of ch is %d, want %d", cap(j.ch), len(chunks))
+		plog.Error("unexpected ch capacity",
+			"cap", cap(j.ch), "want", len(chunks))
+		panic(fmt.Errorf("cap of ch is %v, want %v", cap(j.ch), len(chunks)))
 	}
 	for _, chunk := range chunks {
 		j.ch <- chunk
@@ -136,11 +139,12 @@ func (j *job) addSnapshot(chunks []pb.Chunk) {
 
 func (j *job) AddChunk(chunk pb.Chunk) (bool, bool) {
 	if !chunk.IsPoisonChunk() {
-		plog.Debugf("%s is sending chunk %d to %s",
-			logutil.ReplicaID(chunk.From), chunk.ChunkId,
-			dn(chunk.ShardID, chunk.ReplicaID))
+		plog.Debug("sending chunk",
+			"from", logutil.ReplicaID(chunk.From),
+			"chunk_id", chunk.ChunkId,
+			"target", dn(chunk.ShardID, chunk.ReplicaID))
 	} else {
-		plog.Debugf("sending a poison chunk to %s", dn(j.shardID, j.replicaID))
+		plog.Debug("sending a poison chunk", "target", dn(j.shardID, j.replicaID))
 	}
 
 	select {
@@ -148,11 +152,12 @@ func (j *job) AddChunk(chunk pb.Chunk) (bool, bool) {
 		return true, false
 	case <-j.completed:
 		if !chunk.IsPoisonChunk() {
-			plog.Panicf("more chunk received for completed job")
+			plog.Error("more chunk received for completed job")
+			panic(errors.New("more chunk received for completed job"))
 		}
 		return true, false
 	case <-j.failed:
-		plog.Warningf("stream snapshot to %s failed", dn(j.shardID, j.replicaID))
+		plog.Warn("stream snapshot failed", "target", dn(j.shardID, j.replicaID))
 		return false, false
 	case <-j.stopc:
 		return false, true
@@ -177,7 +182,7 @@ func (j *job) streamSnapshot() error {
 	for {
 		select {
 		case <-j.stopc:
-			plog.Warningf("stream snapshot to %s stopped", dn(j.shardID, j.replicaID))
+			plog.Warn("stream snapshot stopped", "target", dn(j.shardID, j.replicaID))
 			return ErrStopped
 		case chunk := <-j.ch:
 			chunk.DeploymentId = j.deploymentID
@@ -185,13 +190,14 @@ func (j *job) streamSnapshot() error {
 				return ErrStreamSnapshot
 			}
 			if err := j.sendChunk(chunk, j.conn); err != nil {
-				plog.Errorf("streaming snapshot chunk to %s failed, %v",
-					dn(chunk.ShardID, chunk.ReplicaID), err)
+				plog.Error("streaming snapshot chunk failed",
+					"target", dn(chunk.ShardID, chunk.ReplicaID), "error", err)
 				return err
 			}
 			if chunk.ChunkCount == pb.LastChunkCount {
-				plog.Debugf("node %d just sent all chunks to %s",
-					chunk.From, dn(chunk.ShardID, chunk.ReplicaID))
+				plog.Debug("all chunks sent",
+					"from", chunk.From,
+					"target", dn(chunk.ShardID, chunk.ReplicaID))
 				close(j.completed)
 				return nil
 			}
@@ -242,7 +248,9 @@ func (j *job) sendChunks(chunks []pb.Chunk) error {
 		if f := j.postSend.Load(); f != nil {
 			fn, ok := f.(func(pb.Chunk))
 			if !ok {
-				plog.Panicf("unexpected postSend hook type %T", f)
+				plog.Error("unexpected postSend hook type",
+					"type", fmt.Sprintf("%T", f))
+				panic(fmt.Errorf("unexpected postSend hook type %T", f))
 			}
 			fn(chunk)
 		}
@@ -255,11 +263,13 @@ func (j *job) sendChunk(c pb.Chunk,
 	if f := j.preSend.Load(); f != nil {
 		fn, ok := f.(StreamChunkSendFunc)
 		if !ok {
-			plog.Panicf("unexpected preSend hook type %T", f)
+			plog.Error("unexpected preSend hook type",
+				"type", fmt.Sprintf("%T", f))
+			panic(fmt.Errorf("unexpected preSend hook type %T", f))
 		}
 		updated, shouldSend := fn(c)
 		if !shouldSend {
-			plog.Debugf("chunk to %s skipped", dn(c.ShardID, c.ReplicaID))
+			plog.Debug("chunk skipped", "target", dn(c.ShardID, c.ReplicaID))
 			return errChunkSendSkipped
 		}
 		return conn.SendChunk(updated)

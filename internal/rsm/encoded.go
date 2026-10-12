@@ -16,6 +16,8 @@ package rsm
 
 import (
 	"encoding/binary"
+	"errors"
+	"fmt"
 
 	"github.com/neo-f/dragonboat/v4/config"
 	"github.com/neo-f/dragonboat/v4/internal/utils/dio"
@@ -134,7 +136,8 @@ func getDecodedPayload(cmd []byte, buf []byte) ([]byte, error) {
 	ver, ct, hasSession := parseEncodedHeader(cmd)
 	if ver == EEV0 {
 		if hasSession {
-			plog.Panicf("v0 cmd has session info")
+			plog.Error("v0 cmd has session info")
+			panic(errors.New("v0 cmd has session info"))
 		}
 		switch ct {
 		case EENoCompression:
@@ -142,10 +145,12 @@ func getDecodedPayload(cmd []byte, buf []byte) ([]byte, error) {
 		case EESnappy:
 			sz, offset := getV0PayloadUncompressedSize(cmd)
 			if sz == 0 {
-				plog.Panicf("empty uncompressed size found")
+				plog.Error("empty uncompressed size found")
+				panic(errors.New("empty uncompressed size found"))
 			}
 			if offset == 0 {
-				plog.Panicf("zero offset found")
+				plog.Error("zero offset found")
+				panic(errors.New("zero offset found"))
 			}
 			compressed := cmd[EEV0SizeOffset:]
 			var result []byte
@@ -159,7 +164,8 @@ func getDecodedPayload(cmd []byte, buf []byte) ([]byte, error) {
 			}
 			return result, nil
 		default:
-			plog.Panicf("unknown compression type %d", ct)
+			plog.Error("unknown compression type", "type", ct)
+			panic(fmt.Errorf("unknown compression type %d", ct))
 		}
 	}
 	panic("unknown cmd encoding version")

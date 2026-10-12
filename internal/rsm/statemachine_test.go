@@ -1419,7 +1419,7 @@ func TestDuplicatedUpdateWillNotBeAppliedTwice(t *testing.T) {
 		e := applyTestEntry(sm, 12345, 1, 790, 0, data)
 		_, err = sm.Handle(batch, nil)
 		require.NoError(t, err)
-		plog.Infof("Handle returned")
+		plog.Info("Handle returned")
 		require.Equal(t, e.Index, sm.GetLastApplied())
 		require.True(t, nodeProxy.applyUpdateInvoked)
 		require.Equal(t, uint64(len(data)), nodeProxy.smResult.Value)
@@ -1428,7 +1428,7 @@ func TestDuplicatedUpdateWillNotBeAppliedTwice(t *testing.T) {
 		v := mustKVTest(t, store).KVStore["test-key"]
 		require.Equal(t, "test-value", v)
 		e = applyTestEntry(sm, 12345, 1, 791, 0, data)
-		plog.Infof("going to handle the second commit rec")
+		plog.Info("going to handle the second commit rec")
 		_, err = sm.Handle(batch, nil)
 		require.NoError(t, err)
 		require.Equal(t, e.Index, sm.GetLastApplied())

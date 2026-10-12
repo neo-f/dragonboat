@@ -16,6 +16,7 @@ package dragonboat
 
 import (
 	"crypto/rand"
+	"log/slog"
 	mathrand "math/rand/v2"
 	"sync"
 	"sync/atomic"
@@ -36,7 +37,6 @@ import (
 	"github.com/neo-f/dragonboat/v4/internal/transport"
 	"github.com/neo-f/dragonboat/v4/internal/utils/dio"
 	"github.com/neo-f/dragonboat/v4/internal/vfs"
-	"github.com/neo-f/dragonboat/v4/logger"
 	pb "github.com/neo-f/dragonboat/v4/raftpb"
 	sm "github.com/neo-f/dragonboat/v4/statemachine"
 )
@@ -278,8 +278,7 @@ func BenchmarkReadyShard(b *testing.B) {
 
 func BenchmarkFSyncLatency(b *testing.B) {
 	b.StopTimer()
-	l := logger.GetLogger("logdb")
-	l.SetLevel(logger.WARNING)
+	slog.SetLogLoggerLevel(slog.LevelWarn)
 	db := getNewTestDB(b.TempDir(), "db", "lldb", vfs.DefaultFS)
 	defer func() {
 		require.NoError(b, db.Close())
@@ -311,8 +310,7 @@ func benchmarkSaveRaftState(b *testing.B, sz int) {
 	b.Helper()
 	b.ReportAllocs()
 	b.StopTimer()
-	l := logger.GetLogger("logdb")
-	l.SetLevel(logger.WARNING)
+	slog.SetLogLoggerLevel(slog.LevelWarn)
 	db := getNewTestDB(b.TempDir(), "db", "lldb", vfs.DefaultFS)
 	defer func() {
 		require.NoError(b, db.Close())
@@ -410,10 +408,7 @@ func benchmarkTransport(b *testing.B, sz int) {
 	b.Helper()
 	b.ReportAllocs()
 	b.StopTimer()
-	l := logger.GetLogger("transport")
-	l.SetLevel(logger.ERROR)
-	l = logger.GetLogger("grpc")
-	l.SetLevel(logger.ERROR)
+	slog.SetLogLoggerLevel(slog.LevelError)
 	addr1 := "localhost:43567"
 	addr2 := "localhost:43568"
 	nhc1 := config.NodeHostConfig{

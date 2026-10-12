@@ -277,7 +277,7 @@ func NewOnDiskStateMachine(s sm.IOnDiskStateMachine) *OnDiskStateMachine {
 // SetTestFS injects the specified fs to the test SM.
 func (s *OnDiskStateMachine) SetTestFS(fs config.IFS) {
 	if tfs, ok := s.sm.(ITestFS); ok {
-		plog.Infof("the underlying SM support test fs injection")
+		plog.Info("the underlying SM support test fs injection")
 		tfs.SetTestFS(fs)
 	}
 }

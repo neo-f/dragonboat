@@ -132,8 +132,8 @@ func (lr *LogReader) entriesLocked(low uint64,
 		return nil, 0, raft.ErrCompacted
 	}
 	if high > lr.lastIndex()+1 {
-		plog.Errorf("%s, low %d high %d, lastIndex %d",
-			lr.id(), low, high, lr.lastIndex())
+		plog.Error("entriesLocked high out of range",
+			"id", lr.id(), "low", low, "high", high, "last_index", lr.lastIndex())
 		return nil, 0, raft.ErrUnavailable
 	}
 	// limit the size the ents slice to handle the extreme situation in which
@@ -142,7 +142,8 @@ func (lr *LogReader) entriesLocked(low uint64,
 	maxEntries := maxEntrySliceSize / uint64(unsafe.Sizeof(pb.Entry{}))
 	if high-low > maxEntries {
 		high = low + maxEntries
-		plog.Warningf("%s limited high to %d in logReader.entriesLocked", lr.id(), high)
+		plog.Warn("limited high in logReader.entriesLocked",
+			"id", lr.id(), "high", high)
 	}
 	ents := make([]pb.Entry, 0, high-low)
 	size := uint64(0)
@@ -161,14 +162,16 @@ func (lr *LogReader) entriesLocked(low uint64,
 		}
 		expected := ents[len(ents)-1].Index + 1
 		if lr.lastIndex() <= expected {
-			plog.Errorf("%s, %v, low %d high %d, expected %d, lastIndex %d",
-				lr.id(), raft.ErrUnavailable, low, high, expected, lr.lastIndex())
+			plog.Error("gap found in entries",
+				"id", lr.id(), "error", raft.ErrUnavailable,
+				"low", low, "high", high, "expected", expected,
+				"last_index", lr.lastIndex())
 			return nil, 0, raft.ErrUnavailable
 		}
 		return nil, 0, fmt.Errorf("gap found between [%d:%d) at %d",
 			low, high, expected)
 	}
-	plog.Warningf("%s failed to get anything from logreader", lr.id())
+	plog.Warn("failed to get anything from logreader", "id", lr.id())
 	return nil, 0, raft.ErrUnavailable
 }
 
@@ -246,18 +249,18 @@ func (lr *LogReader) CreateSnapshot(snapshot pb.Snapshot) error {
 
 func (lr *LogReader) setSnapshot(snapshot pb.Snapshot) error {
 	if lr.snapshot.Index >= snapshot.Index {
-		plog.Debugf("%s called setSnapshot, existing %d, new %d",
-			lr.id(), lr.snapshot.Index, snapshot.Index)
+		plog.Debug("called setSnapshot",
+			"id", lr.id(), "existing", lr.snapshot.Index, "new", snapshot.Index)
 		return raft.ErrSnapshotOutOfDate
 	}
 	snapshot.Load(lr.compactor)
 	if !pb.IsEmptySnapshot(lr.snapshot) {
-		plog.Debugf("%s unref snapshot %d", lr.id(), lr.snapshot.Index)
+		plog.Debug("unref snapshot", "id", lr.id(), "index", lr.snapshot.Index)
 		if err := lr.snapshot.Unref(); err != nil {
 			return err
 		}
 	}
-	plog.Debugf("%s set snapshot %d", lr.id(), snapshot.Index)
+	plog.Debug("set snapshot", "id", lr.id(), "index", snapshot.Index)
 	lr.snapshot = snapshot
 	return nil
 }
@@ -301,8 +304,11 @@ func (lr *LogReader) SetRange(firstIndex uint64, length uint64) {
 	case lr.length == offset:
 		lr.length += length
 	default:
-		plog.Panicf("%s gap in log entries, marker %d, len %d, first %d, len %d",
-			lr.id(), lr.markerIndex, lr.length, firstIndex, length)
+		plog.Error("gap in log entries",
+			"id", lr.id(), "marker_index", lr.markerIndex, "length", lr.length,
+			"first_index", firstIndex, "new_length", length)
+		panic(fmt.Errorf("%s gap in log entries, marker %d, len %d, first %d, len %d",
+			lr.id(), lr.markerIndex, lr.length, firstIndex, length))
 	}
 }
 

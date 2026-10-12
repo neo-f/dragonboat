@@ -64,7 +64,7 @@ func TestGetV0EncodedPayload(t *testing.T) {
 		{dio.Snappy, 16, 128},
 	}
 	for idx, tt := range tests {
-		plog.Infof("idx: %d", idx)
+		plog.Info("test case", "idx", idx)
 		var src []byte
 		if tt.src == 0 {
 			src = nil

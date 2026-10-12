@@ -24,12 +24,11 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-
-	"github.com/neo-f/dragonboat/v4/logger"
+	"log/slog"
 )
 
 var (
-	plog = logger.GetLogger("settings")
+	plog = slog.With("pkg", "settings")
 )
 
 //

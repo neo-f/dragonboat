@@ -15,6 +15,8 @@
 package raft
 
 import (
+	"fmt"
+
 	"github.com/neo-f/dragonboat/v4/raftpb"
 )
 
@@ -53,8 +55,10 @@ func (r *readIndex) addRequest(index uint64,
 			panic("inconsistent pending and queue")
 		}
 		if index < p.index {
-			plog.Panicf("index moved backward in readIndex, %d:%d",
-				index, p.index)
+			plog.Error("index moved backward in readIndex",
+				"index", index, "pending_index", p.index)
+			panic(fmt.Errorf("index moved backward in readIndex, %d:%d",
+				index, p.index))
 		}
 	}
 	r.queue = append(r.queue, ctx)

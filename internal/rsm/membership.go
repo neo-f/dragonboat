@@ -17,6 +17,8 @@ package rsm
 import (
 	"crypto/md5" //nolint:gosec // used for data checksums, not security
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -294,52 +296,67 @@ func (m *membership) handleConfigChange(cc pb.ConfigChange, index uint64) bool {
 		m.apply(cc, index)
 		switch cc.Type {
 		case pb.AddNode:
-			plog.Infof("%s applied ADD ccid %d (%d), %s (%s)",
-				m.id(), ccid, index, nid(cc.ReplicaID), cc.Address)
+			plog.Info("applied ADD config change",
+				"id", m.id(), "ccid", ccid, "index", index,
+				"replica_id", nid(cc.ReplicaID), "address", cc.Address)
 		case pb.RemoveNode:
-			plog.Infof("%s applied REMOVE ccid %d (%d), %s",
-				m.id(), ccid, index, nid(cc.ReplicaID))
+			plog.Info("applied REMOVE config change",
+				"id", m.id(), "ccid", ccid, "index", index,
+				"replica_id", nid(cc.ReplicaID))
 		case pb.AddNonVoting:
-			plog.Infof("%s applied ADD OBSERVER ccid %d (%d), %s (%s)",
-				m.id(), ccid, index, nid(cc.ReplicaID), cc.Address)
+			plog.Info("applied ADD OBSERVER config change",
+				"id", m.id(), "ccid", ccid, "index", index,
+				"replica_id", nid(cc.ReplicaID), "address", cc.Address)
 		case pb.AddWitness:
-			plog.Infof("%s applied ADD WITNESS ccid %d (%d), %s (%s)",
-				m.id(), ccid, index, nid(cc.ReplicaID), cc.Address)
+			plog.Info("applied ADD WITNESS config change",
+				"id", m.id(), "ccid", ccid, "index", index,
+				"replica_id", nid(cc.ReplicaID), "address", cc.Address)
 		default:
-			plog.Panicf("unknown cc.Type value %d", cc.Type)
+			plog.Error("unknown cc.Type value", "type", cc.Type)
+			panic(fmt.Errorf("unknown cc.Type value %d", cc.Type))
 		}
 	} else {
 		if !upToDateCC {
-			plog.Warningf("%s rej out-of-order ConfChange ccid %d (%d), type %s",
-				m.id(), ccid, index, cc.Type)
+			plog.Warn("rejected out-of-order ConfChange",
+				"id", m.id(), "ccid", ccid, "index", index, "type", cc.Type)
 		} else if addRemovedNode {
-			plog.Warningf("%s rej add removed ccid %d (%d), %s",
-				m.id(), ccid, index, nid(cc.ReplicaID))
+			plog.Warn("rejected adding removed node",
+				"id", m.id(), "ccid", ccid, "index", index,
+				"replica_id", nid(cc.ReplicaID))
 		} else if alreadyMember {
-			plog.Warningf("%s rej add exist ccid %d (%d) %s (%s)",
-				m.id(), ccid, index, nid(cc.ReplicaID), cc.Address)
+			plog.Warn("rejected adding existing node",
+				"id", m.id(), "ccid", ccid, "index", index,
+				"replica_id", nid(cc.ReplicaID), "address", cc.Address)
 		} else if nodeBecomingNonVoting {
-			plog.Warningf("%s rej add exist as nonVoting ccid %d (%d) %s (%s)",
-				m.id(), ccid, index, nid(cc.ReplicaID), cc.Address)
+			plog.Warn("rejected adding node, exists as nonVoting",
+				"id", m.id(), "ccid", ccid, "index", index,
+				"replica_id", nid(cc.ReplicaID), "address", cc.Address)
 		} else if nodeBecomingWitness {
-			plog.Warningf("%s rej add exist as witness ccid %d (%d) %s (%s)",
-				m.id(), ccid, index, nid(cc.ReplicaID), cc.Address)
+			plog.Warn("rejected adding node, exists as witness",
+				"id", m.id(), "ccid", ccid, "index", index,
+				"replica_id", nid(cc.ReplicaID), "address", cc.Address)
 		} else if witnessBecomingNode {
-			plog.Warningf("%s rej add witness as node ccid %d (%d) %s (%s)",
-				m.id(), ccid, index, nid(cc.ReplicaID), cc.Address)
+			plog.Warn("rejected adding witness, exists as node",
+				"id", m.id(), "ccid", ccid, "index", index,
+				"replica_id", nid(cc.ReplicaID), "address", cc.Address)
 		} else if witnessBecomingNonVoting {
-			plog.Warningf("%s rej add witness as nonVoting ccid %d (%d) %s (%s)",
-				m.id(), ccid, index, nid(cc.ReplicaID), cc.Address)
+			plog.Warn("rejected adding witness, exists as nonVoting",
+				"id", m.id(), "ccid", ccid, "index", index,
+				"replica_id", nid(cc.ReplicaID), "address", cc.Address)
 		} else if nonVotingBecomingWitness {
-			plog.Warningf("%s rej add nonVoting as witness ccid %d (%d) %s (%s)",
-				m.id(), ccid, index, nid(cc.ReplicaID), cc.Address)
+			plog.Warn("rejected adding nonVoting, exists as witness",
+				"id", m.id(), "ccid", ccid, "index", index,
+				"replica_id", nid(cc.ReplicaID), "address", cc.Address)
 		} else if deleteOnlyNode {
-			plog.Warningf("%s rej remove the only node %s", m.id(), nid(cc.ReplicaID))
+			plog.Warn("rejected removing the only node",
+				"id", m.id(), "replica_id", nid(cc.ReplicaID))
 		} else if invalidPromotion {
-			plog.Warningf("%s rej invalid nonVoting promotion ccid %d (%d) %s (%s)",
-				m.id(), ccid, index, nid(cc.ReplicaID), cc.Address)
+			plog.Warn("rejected invalid nonVoting promotion",
+				"id", m.id(), "ccid", ccid, "index", index,
+				"replica_id", nid(cc.ReplicaID), "address", cc.Address)
 		} else {
-			plog.Panicf("config change rejected for unknown reasons")
+			plog.Error("config change rejected for unknown reasons")
+			panic(errors.New("config change rejected for unknown reasons"))
 		}
 	}
 	return accepted

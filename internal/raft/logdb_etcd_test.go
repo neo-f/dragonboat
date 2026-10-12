@@ -59,7 +59,7 @@ func TestLogDBTerm(t *testing.T) {
 					}
 				}
 			}()
-			plog.Infof("checking term for index %d", tt.i)
+			plog.Info("checking term for index", "index", tt.i)
 			term, err := s.Term(tt.i)
 			if !errors.Is(err, tt.werr) {
 				t.Errorf("#%d: err = %v, want %v", i, err, tt.werr)
@@ -84,7 +84,7 @@ func TestLogDBLastIndex(t *testing.T) {
 		t.Errorf("term = %d, want %d", last, 5)
 	}
 
-	plog.Infof("going to append")
+	plog.Info("going to append")
 	if err := s.Append([]pb.Entry{{Index: 6, Term: 5}}); err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -269,7 +269,7 @@ func TestLogDBAppend(t *testing.T) {
 			markerTerm:  v[0].Term,
 			entries:     v[1:],
 		}
-		plog.Infof("appending #%d", i)
+		plog.Info("appending", "case", i)
 		err := s.Append(tt.entries)
 		if !errors.Is(err, tt.werr) {
 			t.Errorf("#%d: err = %v, want %v", i, err, tt.werr)

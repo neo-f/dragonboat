@@ -404,17 +404,17 @@ func testMessageCanBeSent(t *testing.T, mutualTLS bool, sz uint64, fs vfs.IFS) {
 	for range 200 {
 		time.Sleep(100 * time.Millisecond)
 		count := handler.getRequestCount(100, 2)
-		plog.Infof("%d test messages received", count)
+		plog.Info("test messages received", "count", count)
 		if count == 20 {
 			done = true
 			break
 		} else {
-			plog.Infof("count: %d, want 20, will wait for 100ms", count)
+			plog.Info("will wait for 100ms", "count", count, "want", 20)
 		}
 	}
 	assert.True(t, done, "failed to get all 20 sent messages")
 	// test to ensure a single big message can be sent/received.
-	plog.Infof("sending a test msg with payload sz %d", sz)
+	plog.Info("sending a test msg", "payload_size", sz)
 	payload := make([]byte, sz)
 	m := raftpb.Message{
 		Type:    raftpb.Replicate,
@@ -426,7 +426,7 @@ func testMessageCanBeSent(t *testing.T, mutualTLS bool, sz uint64, fs vfs.IFS) {
 			},
 		},
 	}
-	plog.Infof("msg ready to be sent")
+	plog.Info("msg ready to be sent")
 	ok := trans.Send(m)
 	assert.True(t, ok, "failed to send the large msg")
 	received := false
@@ -780,9 +780,9 @@ func testSnapshotCanBeSent(t *testing.T,
 	}()
 	defer stopper.Stop()
 	nodes.Add(100, 2, serverAddress)
-	plog.Infof("going to generate snapshot file")
+	plog.Info("going to generate snapshot file")
 	tt.generateSnapshotFile(100, 12, testSnapshotIndex, "testsnapshot.gbsnap", sz, fs)
-	plog.Infof("snapshot file created")
+	plog.Info("snapshot file created")
 	m := getTestSnapshotMessage(2)
 	m.Snapshot.FileSize = getTestSnapshotFileSize(sz)
 	dir := tt.GetSnapshotDir(100, 12, testSnapshotIndex)
@@ -793,15 +793,15 @@ func testSnapshotCanBeSent(t *testing.T,
 	require.NoError(t, err)
 	m.Snapshot.Filepath = fs.PathJoin(dir, "testsnapshot.gbsnap")
 	// send the snapshot file
-	plog.Infof("send snapshot will be called")
+	plog.Info("send snapshot will be called")
 	done := trans.SendSnapshot(m)
-	plog.Infof("send snapshot returned")
+	plog.Info("send snapshot returned")
 	assert.True(t, done, "failed to send the snapshot")
-	plog.Infof("waiting for snapshot status update")
+	plog.Info("waiting for snapshot status update")
 	waitForFirstSnapshotStatusUpdate(handler, maxWait)
-	plog.Infof("waiting for snapshot count update")
+	plog.Info("waiting for snapshot count update")
 	waitForSnapshotCountUpdate(handler, maxWait)
-	plog.Infof("snapshot count updated")
+	plog.Info("snapshot count updated")
 	assert.Equal(t, uint64(1), handler.getSnapshotCount(100, 2),
 		"got %d, want %d", handler.getSnapshotCount(100, 2), 1)
 	assert.Equal(t, uint64(0), handler.getFailedSnapshotCount(100, 2),
@@ -915,7 +915,7 @@ func TestMaxSnapshotConnectionIsLimited(t *testing.T) {
 	}
 	breaker := trans.GetCircuitBreaker(serverAddress)
 	breaker.Reset()
-	plog.Infof("circuit breaker for %s is now ready", serverAddress)
+	plog.Info("circuit breaker is now ready", "address", serverAddress)
 	for i := range maxConnectionCount {
 		sink := trans.GetStreamSink(100, 2)
 		assert.NotNil(t, sink, "failed to get sink again %d", i)

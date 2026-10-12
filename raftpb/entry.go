@@ -3,6 +3,8 @@
 
 package raftpb
 
+import "fmt"
+
 type Entry struct {
 	Term        uint64
 	Index       uint64
@@ -32,13 +34,18 @@ func EntriesToApply(entries []Entry, applied uint64, strict bool) []Entry {
 	firstIndex := entries[0].Index
 	if lastIndex <= applied {
 		if strict {
-			plog.Panicf("got entries [%d-%d] older than current state %d",
-				firstIndex, lastIndex, applied)
+			plog.Error("got entries older than current state",
+				"first_index", firstIndex, "last_index", lastIndex,
+				"applied", applied)
+			panic(fmt.Errorf("got entries [%d-%d] older than current state %d",
+				firstIndex, lastIndex, applied))
 		}
 		return []Entry{}
 	}
 	if firstIndex > applied+1 {
-		plog.Panicf("entry hole found: %d, want: %d", firstIndex, applied+1)
+		plog.Error("entry hole found",
+			"first_index", firstIndex, "want", applied+1)
+		panic(fmt.Errorf("entry hole found: %d, want: %d", firstIndex, applied+1))
 	}
 	if applied-firstIndex+1 < uint64(len(entries)) {
 		return entries[applied-firstIndex+1:]

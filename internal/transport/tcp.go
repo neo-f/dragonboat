@@ -19,6 +19,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
+	"fmt"
 	"hash/crc32"
 	"io"
 	"net"
@@ -97,13 +98,13 @@ func (h *requestHeader) decode(buf []byte) bool {
 	binary.BigEndian.PutUint32(buf[10:], 0)
 	expected := crc32.ChecksumIEEE(buf[:requestHeaderSize])
 	if incoming != expected {
-		plog.Errorf("header crc check failed")
+		plog.Error("header crc check failed")
 		return false
 	}
 	binary.BigEndian.PutUint32(buf[10:], incoming)
 	method := binary.BigEndian.Uint16(buf)
 	if method != raftType && method != snapshotType {
-		plog.Errorf("invalid method type")
+		plog.Error("invalid method type")
 		return false
 	}
 	h.method = method
@@ -134,7 +135,7 @@ func waitPoisonAck(conn net.Conn) {
 		return
 	}
 	if _, err := io.ReadFull(conn, ack); err != nil {
-		plog.Errorf("failed to get poison ack %v", err)
+		plog.Error("failed to get poison ack", "error", err)
 		return
 	}
 }
@@ -172,7 +173,9 @@ func writeMessage(conn net.Conn,
 		sent += bufSize
 	}
 	if sent != len(buf) {
-		plog.Panicf("sent %d, buf len %d", sent, len(buf))
+		plog.Error("sent size does not match buf len",
+			"sent", sent, "buf_len", len(buf))
+		panic(fmt.Errorf("sent %v, buf len %v", sent, len(buf)))
 	}
 	return nil
 }
@@ -184,16 +187,16 @@ func readMessage(conn net.Conn,
 		return requestHeader{}, nil, err
 	}
 	if _, err := io.ReadFull(conn, header); err != nil {
-		plog.Errorf("failed to get the header")
+		plog.Error("failed to get the header")
 		return requestHeader{}, nil, err
 	}
 	rheader := requestHeader{}
 	if !rheader.decode(header) {
-		plog.Errorf("invalid header")
+		plog.Error("invalid header")
 		return requestHeader{}, nil, ErrBadMessage
 	}
 	if rheader.size == 0 {
-		plog.Errorf("invalid payload length")
+		plog.Error("invalid payload length")
 		return requestHeader{}, nil, ErrBadMessage
 	}
 	var buf []byte
@@ -221,7 +224,7 @@ func readMessage(conn net.Conn,
 		panic("unexpected size")
 	}
 	if !encrypted && crc32.ChecksumIEEE(buf) != rheader.crc {
-		plog.Errorf("invalid payload checksum")
+		plog.Error("invalid payload checksum")
 		return requestHeader{}, nil, ErrBadMessage
 	}
 	return rheader, buf, nil
@@ -308,7 +311,7 @@ func NewTCPConnection(conn net.Conn, encrypted bool) *TCPConnection {
 // Close closes the TCPConnection instance.
 func (c *TCPConnection) Close() {
 	if err := c.conn.Close(); err != nil {
-		plog.Errorf("failed to close the connection %v", err)
+		plog.Error("failed to close the connection", "error", err)
 	}
 }
 
@@ -350,7 +353,7 @@ func NewTCPSnapshotConnection(conn net.Conn,
 func (c *TCPSnapshotConnection) Close() {
 	defer func() {
 		if err := c.conn.Close(); err != nil {
-			plog.Debugf("failed to close the connection %v", err)
+			plog.Debug("failed to close the connection", "error", err)
 		}
 	}()
 	if err := sendPoison(c.conn, poisonNumber[:]); err != nil {
@@ -432,7 +435,7 @@ func (t *TCP) Start() error {
 				default:
 				}
 				if err := conn.Close(); err != nil {
-					plog.Errorf("failed to close the connection %v", err)
+					plog.Error("failed to close the connection", "error", err)
 				}
 			})
 			t.connStopper.RunWorker(func() {
@@ -493,7 +496,7 @@ func (t *TCP) serveConn(conn net.Conn) {
 		if err != nil {
 			if errors.Is(err, errPoisonReceived) {
 				if err := sendPoisonAck(conn, poisonNumber[:]); err != nil {
-					plog.Debugf("failed to send poison ack %v", err)
+					plog.Debug("failed to send poison ack", "error", err)
 				}
 				return
 			}
@@ -524,7 +527,7 @@ func (t *TCP) serveConn(conn net.Conn) {
 				return
 			}
 			if !t.chunkHandler(chunk) {
-				plog.Errorf("chunk rejected %s", chunkKey(chunk))
+				plog.Error("chunk rejected", "chunk_key", chunkKey(chunk))
 				return
 			}
 		}

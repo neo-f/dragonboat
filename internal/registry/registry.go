@@ -64,15 +64,19 @@ func (n *Registry) Close() error { return nil }
 // Add adds the specified replica and its target info to the registry.
 func (n *Registry) Add(shardID uint64, replicaID uint64, target string) {
 	if n.validate != nil && !n.validate(target) {
-		plog.Panicf("invalid target %s", target)
+		plog.Error("invalid target", "target", target)
+		panic(fmt.Errorf("invalid target %v", target))
 	}
 	key := raftio.GetNodeInfo(shardID, replicaID)
 	v, ok := n.addr.LoadOrStore(key, target)
 	if ok {
 		existing, mok := v.(string)
 		if !mok || existing != target {
-			plog.Panicf("inconsistent target for %s, %s:%s",
-				logutil.DescribeNode(shardID, replicaID), v, target)
+			plog.Error("inconsistent target",
+				"node", logutil.DescribeNode(shardID, replicaID),
+				"existing", v, "target", target)
+			panic(fmt.Errorf("inconsistent target for %v, %v:%v",
+				logutil.DescribeNode(shardID, replicaID), v, target))
 		}
 	}
 }

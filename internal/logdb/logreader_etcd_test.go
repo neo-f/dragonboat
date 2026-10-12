@@ -285,11 +285,11 @@ func testLogReaderAppend(t *testing.T, fs vfs.IFS) {
 		require.Error(t, err, "expected error for index %d", ali)
 		for ii, e := range tt.wentries {
 			if e.Index == 6 {
-				plog.Infof("going to check term for index 6")
+				plog.Info("going to check term for index 6")
 			}
 			term, err := s.Term(e.Index)
 			if e.Index == 6 {
-				plog.Infof("Term returned")
+				plog.Info("Term returned")
 			}
 			require.NoError(t, err, "idx %d, ii %d Term() failed", i, ii)
 			require.Equal(t, e.Term, term, "term mismatch for index %d", e.Index)

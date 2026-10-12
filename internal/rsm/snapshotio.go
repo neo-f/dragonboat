@@ -17,6 +17,7 @@ package rsm
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"hash"
 	"hash/crc32"
 	"io"
@@ -74,7 +75,8 @@ func getChecksum(t pb.ChecksumType) (hash.Hash, bool) {
 func mustGetChecksum(t pb.ChecksumType) hash.Hash {
 	c, ok := getChecksum(t)
 	if !ok {
-		plog.Panicf("failed to get checksum, type %d", t)
+		plog.Error("failed to get checksum", "type", t)
+		panic(fmt.Errorf("failed to get checksum, type %d", t))
 	}
 	return c
 }
@@ -93,7 +95,8 @@ func getVersionedWriter(w io.Writer, v SSVersion) (IVWriter, bool) {
 func mustGetVersionedWriter(w io.Writer, v SSVersion) IVWriter {
 	vw, ok := getVersionedWriter(w, v)
 	if !ok {
-		plog.Panicf("failed to get version writer, v %d", v)
+		plog.Error("failed to get version writer", "version", v)
+		panic(fmt.Errorf("failed to get version writer, v %d", v))
 	}
 	return vw
 }
@@ -114,7 +117,8 @@ func mustGetVersionedReader(r io.Reader,
 	v SSVersion, t pb.ChecksumType) IVReader {
 	vr, ok := getVersionedReader(r, v, t)
 	if !ok {
-		plog.Panicf("failed to get version reader, v %d", v)
+		plog.Error("failed to get version reader", "version", v)
+		panic(fmt.Errorf("failed to get version reader, v %d", v))
 	}
 	return vr
 }
@@ -362,7 +366,8 @@ var fourZeroBytes = []byte{0, 0, 0, 0}
 
 func validateHeader(header []byte, crc32 []byte) bool {
 	if len(crc32) != 4 {
-		plog.Panicf("invalid crc32 len: %d", len(crc32))
+		plog.Error("invalid crc32 len", "len", len(crc32))
+		panic(fmt.Errorf("invalid crc32 len: %d", len(crc32)))
 	}
 	if !bytes.Equal(crc32, fourZeroBytes) {
 		h := newCRC32Hash()
@@ -387,14 +392,14 @@ func (v *SnapshotValidator) AddChunk(data []byte, chunkID uint64) bool {
 	if chunkID == 0 {
 		header, crc, ok := getHeaderFromFirstChunk(data)
 		if !ok {
-			plog.Errorf("failed to get header from first chunk")
+			plog.Error("failed to get header from first chunk")
 			return false
 		}
 		if v.v != nil {
 			return false
 		}
 		if !validateHeader(header, crc) {
-			plog.Errorf("validate header failed")
+			plog.Error("validate header failed")
 			return false
 		}
 		var headerRec pb.SnapshotHeader
@@ -450,8 +455,10 @@ func IsShrunkSnapshotFile(fp string, fs vfs.IFS) (shrunk bool, err error) {
 
 func mustInSameDir(fp string, newFp string, fs vfs.IFS) {
 	if fs.PathDir(fp) != fs.PathDir(newFp) {
-		plog.Panicf("not in the same dir, dir 1: %s, dir 2: %s",
-			fs.PathDir(fp), fs.PathDir(newFp))
+		plog.Error("not in the same dir",
+			"dir_1", fs.PathDir(fp), "dir_2", fs.PathDir(newFp))
+		panic(fmt.Errorf("not in the same dir, dir 1: %s, dir 2: %s",
+			fs.PathDir(fp), fs.PathDir(newFp)))
 	}
 }
 

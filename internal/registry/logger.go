@@ -15,30 +15,31 @@
 package registry
 
 import (
+	"context"
 	"log"
+	"log/slog"
 	"strings"
-
-	"github.com/neo-f/dragonboat/v4/logger"
 )
 
 type gossipLogWriter struct {
-	logger logger.ILogger
+	logger *slog.Logger
 }
 
 func (l *gossipLogWriter) Write(p []byte) (int, error) {
 	str := string(p)
 	str = strings.TrimSuffix(str, "\n")
+	ctx := context.Background()
 
 	if s, found := strings.CutPrefix(str, "[WARN] "); found {
-		l.logger.Warningf("%s", s)
+		l.logger.Log(ctx, slog.LevelWarn, s)
 	} else if s, found := strings.CutPrefix(str, "[DEBUG] "); found {
-		l.logger.Debugf("%s", s)
+		l.logger.Log(ctx, slog.LevelDebug, s)
 	} else if s, found := strings.CutPrefix(str, "[INFO] "); found {
-		l.logger.Infof("%s", s)
+		l.logger.Log(ctx, slog.LevelInfo, s)
 	} else if s, found := strings.CutPrefix(str, "[ERR] "); found {
-		l.logger.Warningf("%s", s)
+		l.logger.Log(ctx, slog.LevelWarn, s)
 	} else {
-		l.logger.Warningf("%s", str)
+		l.logger.Log(ctx, slog.LevelWarn, str)
 	}
 
 	return len(p), nil
@@ -48,6 +49,6 @@ func (l *gossipLogWriter) Write(p []byte) (int, error) {
 // Inspirited by https://github.com/docker/docker-ce/blob/master/components/engine/libnetwork/networkdb/shard.go#L30
 func newGossipLogWrapper() *log.Logger {
 	return log.New(&gossipLogWriter{
-		logger: logger.GetLogger("gossip"),
+		logger: slog.With("pkg", "gossip"),
 	}, "", 0)
 }

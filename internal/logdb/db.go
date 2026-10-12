@@ -16,6 +16,7 @@ package logdb
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math"
 
 	"github.com/cockroachdb/errors"
@@ -187,8 +188,10 @@ func (r *db) saveRaftState(updates []pb.Update, ctx IContext) error {
 				// raft/inMemory makes sure such entries no longer need to be saved
 				lastIndex := ud.EntriesToSave[len(ud.EntriesToSave)-1].Index
 				if ud.Snapshot.Index > lastIndex {
-					plog.Panicf("max index not handled, %d, %d",
-						ud.Snapshot.Index, lastIndex)
+					plog.Error("max index not handled",
+						"snapshot_index", ud.Snapshot.Index, "last_index", lastIndex)
+					panic(fmt.Errorf("max index not handled, %d, %d",
+						ud.Snapshot.Index, lastIndex))
 				}
 			}
 			if err := r.saveSnapshot(wb, ud); err != nil {

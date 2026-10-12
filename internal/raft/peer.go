@@ -41,7 +41,11 @@ package raft
 
 import (
 	"cmp"
+	"fmt"
+	"log/slog"
 	"slices"
+
+	"github.com/cockroachdb/errors"
 
 	"github.com/neo-f/dragonboat/v4/config"
 	"github.com/neo-f/dragonboat/v4/internal/server"
@@ -66,8 +70,8 @@ func Launch(config config.Config,
 	logdb ILogDB, events server.IRaftEventListener,
 	addresses []PeerAddress, initial bool, newNode bool) Peer {
 	checkLaunchRequest(config, addresses, initial, newNode)
-	plog.Infof("%s created, initial: %t, new: %t",
-		dn(config.ShardID, config.ReplicaID), initial, newNode)
+	plog.Info("node created",
+		"node", dn(config.ShardID, config.ReplicaID), "initial", initial, "new_node", newNode)
 	p := Peer{raft: newRaft(config, logdb)}
 	p.raft.events = events
 	p.prevState = p.raft.raftState()
@@ -230,16 +234,20 @@ func validateUpdate(ud pb.Update) {
 	if ud.Commit > 0 && len(ud.CommittedEntries) > 0 {
 		lastIndex := ud.CommittedEntries[len(ud.CommittedEntries)-1].Index
 		if lastIndex > ud.Commit {
-			plog.Panicf("trying to apply not committed entry: %d, %d",
-				ud.Commit, lastIndex)
+			plog.Error("trying to apply not committed entry",
+				"commit", ud.Commit, "last_index", lastIndex)
+			panic(fmt.Errorf("trying to apply not committed entry: %d, %d",
+				ud.Commit, lastIndex))
 		}
 	}
 	if len(ud.CommittedEntries) > 0 && len(ud.EntriesToSave) > 0 {
 		lastApply := ud.CommittedEntries[len(ud.CommittedEntries)-1].Index
 		lastSave := ud.EntriesToSave[len(ud.EntriesToSave)-1].Index
 		if lastApply > lastSave {
-			plog.Panicf("trying to apply not saved entry: %d, %d",
-				lastApply, lastSave)
+			plog.Error("trying to apply not saved entry",
+				"last_apply", lastApply, "last_save", lastSave)
+			panic(fmt.Errorf("trying to apply not saved entry: %d, %d",
+				lastApply, lastSave))
 		}
 	}
 }
@@ -392,13 +400,16 @@ func checkLaunchRequest(config config.Config,
 		uniqueAddressList[addr.Address] = struct{}{}
 	}
 	if len(uniqueAddressList) != len(addresses) {
-		plog.Panicf("duplicated address found %v", addresses)
+		plog.Error("duplicated address found", slog.Any("addresses", addresses))
+		panic(fmt.Errorf("duplicated address found %v", addresses))
 	}
 	if initial && config.IsWitness {
-		plog.Panicf("witness can not be used as initial member")
+		plog.Error("witness can not be used as initial member")
+		panic(errors.New("witness can not be used as initial member"))
 	}
 	if initial && config.IsNonVoting {
-		plog.Panicf("non-voting can not be used as initial member")
+		plog.Error("non-voting can not be used as initial member")
+		panic(errors.New("non-voting can not be used as initial member"))
 	}
 }
 
@@ -408,8 +419,8 @@ func bootstrap(r *raft, addresses []PeerAddress) {
 	})
 	ents := make([]pb.Entry, len(addresses))
 	for i, peer := range addresses {
-		plog.Infof("%s added bootstrap ConfigChangeAddNode, %d, %s",
-			r.describe(), peer.ReplicaID, peer.Address)
+		plog.Info("added bootstrap ConfigChangeAddNode",
+			"node", r.describe(), "replica_id", peer.ReplicaID, "address", peer.Address)
 		cc := pb.ConfigChange{
 			Type:       pb.AddNode,
 			ReplicaID:  peer.ReplicaID,

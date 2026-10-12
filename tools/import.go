@@ -22,6 +22,7 @@ tools for managing Dragonboat based applications.
 import (
 	"bytes"
 	"io"
+	"log/slog"
 	"maps"
 	"os"
 	"runtime"
@@ -37,13 +38,12 @@ import (
 	"github.com/neo-f/dragonboat/v4/internal/settings"
 	"github.com/neo-f/dragonboat/v4/internal/utils"
 	"github.com/neo-f/dragonboat/v4/internal/vfs"
-	"github.com/neo-f/dragonboat/v4/logger"
 	"github.com/neo-f/dragonboat/v4/raftio"
 	pb "github.com/neo-f/dragonboat/v4/raftpb"
 )
 
 var (
-	plog = logger.GetLogger("tools")
+	plog = slog.With("pkg", "tools")
 )
 
 var (
@@ -135,8 +135,8 @@ var firstError = utils.FirstError
 func ImportSnapshot(nhConfig config.NodeHostConfig,
 	srcDir string, memberNodes map[uint64]string, replicaID uint64) (err error) {
 	if nhConfig.DeploymentID == 0 {
-		plog.Infof("NodeHostConfig.DeploymentID not set, default to %d",
-			unmanagedDeploymentID)
+		plog.Info("NodeHostConfig.DeploymentID not set, using default",
+			"deployment_id", unmanagedDeploymentID)
 		nhConfig.DeploymentID = unmanagedDeploymentID
 	}
 	if nhConfig.Expert.FS == nil {
@@ -254,12 +254,12 @@ func checkImportSettings(nhConfig config.NodeHostConfig,
 	memberNodes map[uint64]string, replicaID uint64) error {
 	addr, ok := memberNodes[replicaID]
 	if !ok {
-		plog.Errorf("node ID not found in the memberNode map")
+		plog.Error("node ID not found in the memberNode map")
 		return ErrInvalidMembers
 	}
 	if nhConfig.RaftAddress != addr {
-		plog.Errorf("node address in NodeHostConfig %s, in members %s",
-			nhConfig.RaftAddress, addr)
+		plog.Error("node address mismatch",
+			"nodehost_address", nhConfig.RaftAddress, "member_address", addr)
 		return ErrInvalidMembers
 	}
 	return nil

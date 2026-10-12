@@ -16,6 +16,8 @@ package tee
 
 import (
 	"cmp"
+	"fmt"
+	"log/slog"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -30,13 +32,12 @@ import (
 	"github.com/neo-f/dragonboat/v4/internal/logdb/kv"
 	"github.com/neo-f/dragonboat/v4/internal/logdb/kv/pebble"
 	"github.com/neo-f/dragonboat/v4/internal/tan"
-	"github.com/neo-f/dragonboat/v4/logger"
 	"github.com/neo-f/dragonboat/v4/raftio"
 	pb "github.com/neo-f/dragonboat/v4/raftpb"
 )
 
 var (
-	plog = logger.GetLogger("LogDB")
+	plog = slog.With("pkg", "LogDB")
 )
 
 var dn = logutil.DescribeNode
@@ -45,8 +46,10 @@ func assertSameError(shardID uint64, replicaID uint64, e1 error, e2 error) {
 	if errors.Is(e1, e2) || errors.Is(e2, e1) {
 		return
 	}
-	plog.Panicf("conflict errors, %s, e1 %v, e2 %v",
-		dn(shardID, replicaID), e1, e2)
+	plog.Error("conflict errors",
+		"id", dn(shardID, replicaID), "error_1", e1, "error_2", e2)
+	panic(fmt.Errorf("conflict errors, %s, e1 %w, e2 %w",
+		dn(shardID, replicaID), e1, e2))
 }
 
 // getMirroredValue queries both LogDB instances with the same getter and
@@ -64,8 +67,11 @@ func getMirroredValue[T any](t *LogDB, name string, shardID uint64,
 		return result, oe
 	}
 	if !reflect.DeepEqual(ov, nv) {
-		plog.Panicf("%s conflict %s values, %+v, %+v",
-			dn(shardID, replicaID), name, ov, nv)
+		plog.Error("conflict values",
+			"id", dn(shardID, replicaID), "name", name,
+			slog.Any("old_value", ov), slog.Any("new_value", nv))
+		panic(fmt.Errorf("%s conflict %s values, %+v, %+v",
+			dn(shardID, replicaID), name, ov, nv))
 	}
 	return ov, nil
 }
@@ -151,7 +157,8 @@ func (t *LogDB) BinaryFormat() uint32 {
 	o := t.odb.BinaryFormat()
 	n := t.ndb.BinaryFormat()
 	if o != n {
-		plog.Panicf("binary format changed, odb %d, ndb %d", o, n)
+		plog.Error("binary format changed", "odb", o, "ndb", n)
+		panic(fmt.Errorf("binary format changed, odb %d, ndb %d", o, n))
 	}
 	return o
 }
@@ -179,7 +186,9 @@ func (t *LogDB) ListNodeInfo() ([]raftio.NodeInfo, error) {
 		)
 	})
 	if !reflect.DeepEqual(o, n) {
-		plog.Panicf("conflict NodeInfo list, %+v, %+v", o, n)
+		plog.Error("conflict NodeInfo list",
+			slog.Any("old", o), slog.Any("new", n))
+		panic(fmt.Errorf("conflict NodeInfo list, %+v, %+v", o, n))
 	}
 	return o, nil
 }
@@ -229,14 +238,21 @@ func (t *LogDB) IterateEntries(ents []pb.Entry,
 		return nil, 0, oe
 	}
 	if os != ns {
-		plog.Infof("")
-		plog.Panicf("%s conflict sizes, %d, %d, %+v, %+v",
-			dn(shardID, replicaID), os, ns, ov, nv)
+		plog.Info("")
+		plog.Error("conflict sizes",
+			"id", dn(shardID, replicaID), "old_size", os, "new_size", ns,
+			slog.Any("old_entries", ov), slog.Any("new_entries", nv))
+		panic(fmt.Errorf("%s conflict sizes, %d, %d, %+v, %+v",
+			dn(shardID, replicaID), os, ns, ov, nv))
 	}
 	if len(ov) != 0 || len(nv) != 0 {
 		if !reflect.DeepEqual(ov, nv) {
-			plog.Panicf("%s conflict entry lists, len: %d, %+v \n\n len: %d, %+v",
-				dn(shardID, replicaID), len(ov), ov, len(nv), nv)
+			plog.Error("conflict entry lists",
+				"id", dn(shardID, replicaID),
+				"old_len", len(ov), slog.Any("old_entries", ov),
+				"new_len", len(nv), slog.Any("new_entries", nv))
+			panic(fmt.Errorf("%s conflict entry lists, len: %d, %+v \n\n len: %d, %+v",
+				dn(shardID, replicaID), len(ov), ov, len(nv), nv))
 		}
 	}
 	return ov, os, nil
@@ -254,8 +270,11 @@ func (t *LogDB) ReadRaftState(shardID uint64,
 		return raftio.RaftState{}, oe
 	}
 	if !reflect.DeepEqual(os, ns) {
-		plog.Panicf("%s conflict ReadRaftState values, %+v, %+v",
-			dn(shardID, replicaID), os, ns)
+		plog.Error("conflict ReadRaftState values",
+			"id", dn(shardID, replicaID),
+			slog.Any("old_state", os), slog.Any("new_state", ns))
+		panic(fmt.Errorf("%s conflict ReadRaftState values, %+v, %+v",
+			dn(shardID, replicaID), os, ns))
 	}
 	return os, nil
 }

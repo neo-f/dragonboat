@@ -73,8 +73,9 @@ func (q *quiesceState) record(msgType pb.MessageType) {
 	q.idleSince = q.currentTick
 	if q.quiesced() {
 		q.exitQuiesce()
-		plog.Infof("%s exited from quiesce, msg type %s, current tick %d",
-			dn(q.shardID, q.replicaID), msgType, q.currentTick)
+		plog.Info("exited from quiesce",
+			"id", dn(q.shardID, q.replicaID),
+			"type", msgType, "tick", q.currentTick)
 	}
 }
 
@@ -101,8 +102,8 @@ func (q *quiesceState) tryEnterQuiesce() {
 		return
 	}
 	if !q.quiesced() {
-		plog.Infof("%s going to enter quiesce due to quiesce message",
-			dn(q.shardID, q.replicaID))
+		plog.Info("going to enter quiesce due to quiesce message",
+			"id", dn(q.shardID, q.replicaID))
 		q.enterQuiesce()
 	}
 }
@@ -111,7 +112,7 @@ func (q *quiesceState) enterQuiesce() {
 	q.quiescedSince = q.currentTick
 	q.idleSince = q.currentTick
 	q.setNewQuiesceStateFlag()
-	plog.Infof("%s entered quiesce", dn(q.shardID, q.replicaID))
+	plog.Info("entered quiesce", "id", dn(q.shardID, q.replicaID))
 }
 
 func (q *quiesceState) exitQuiesce() {

@@ -361,7 +361,7 @@ func checkTestSnapshotFile(chunks *Chunk,
 	finalFp := env.GetFilepath()
 	f, err := chunks.fs.Open(finalFp)
 	if err != nil {
-		plog.Errorf("no final fp file %s", finalFp)
+		plog.Error("no final fp file", "path", finalFp)
 		return false
 	}
 	defer func() {
@@ -371,7 +371,8 @@ func checkTestSnapshotFile(chunks *Chunk,
 	}()
 	fi, _ := f.Stat()
 	if uint64(fi.Size()) != size {
-		plog.Errorf("size doesn't match %d, %d, %s", fi.Size(), size, finalFp)
+		plog.Error("size doesn't match",
+			"got", fi.Size(), "want", size, "path", finalFp)
 		return false
 	}
 	return true

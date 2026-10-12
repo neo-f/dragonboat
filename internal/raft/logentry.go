@@ -15,6 +15,8 @@
 package raft
 
 import (
+	"fmt"
+
 	"github.com/cockroachdb/errors"
 
 	"github.com/neo-f/dragonboat/v4/internal/server"
@@ -155,7 +157,8 @@ func (l *entryLog) term(index uint64) (uint64, error) {
 
 func (l *entryLog) checkBound(low uint64, high uint64) error {
 	if low > high {
-		plog.Panicf("input low %d > high %d", low, high)
+		plog.Error("input low > high", "low", low, "high", high)
+		panic(fmt.Errorf("input low %d > high %d", low, high))
 	}
 	first, last, ok := l.entryRange()
 	if !ok {
@@ -165,8 +168,10 @@ func (l *entryLog) checkBound(low uint64, high uint64) error {
 		return ErrCompacted
 	}
 	if high > last+1 {
-		plog.Panicf("requested range [%d,%d) is out of bound [%d,%d]",
-			low, high, first, last)
+		plog.Error("requested range is out of bound",
+			"low", low, "high", high, "first", first, "last", last)
+		panic(fmt.Errorf("requested range [%d,%d) is out of bound [%d,%d]",
+			low, high, first, last))
 	}
 	return nil
 }
@@ -188,7 +193,8 @@ func (l *entryLog) getEntriesFromLogDB(low uint64,
 		return nil, false, err
 	}
 	if uint64(len(ents)) > upperBound-low {
-		plog.Panicf("uint64(len(ents)) > upperBound-low")
+		plog.Error("uint64(len(ents)) > upperBound-low")
+		panic(errors.New("uint64(len(ents)) > upperBound-low"))
 	}
 	return ents, uint64(len(ents)) == upperBound-low, nil
 }
@@ -299,8 +305,10 @@ func (l *entryLog) tryAppend(index uint64, ents []pb.Entry) (bool, error) {
 	}
 	if conflictIndex != 0 {
 		if conflictIndex <= l.committed {
-			plog.Panicf("entry %d conflicts with committed entry, committed %d",
-				conflictIndex, l.committed)
+			plog.Error("entry conflicts with committed entry",
+				"index", conflictIndex, "committed", l.committed)
+			panic(fmt.Errorf("entry %d conflicts with committed entry, committed %d",
+				conflictIndex, l.committed))
 		}
 		l.append(ents[conflictIndex-index-1:])
 		return true, nil
@@ -313,8 +321,10 @@ func (l *entryLog) append(entries []pb.Entry) {
 		return
 	}
 	if entries[0].Index <= l.committed {
-		plog.Panicf("committed entries being changed, committed %d, first idx %d",
-			l.committed, entries[0].Index)
+		plog.Error("committed entries being changed",
+			"committed", l.committed, "first_index", entries[0].Index)
+		panic(fmt.Errorf("committed entries being changed, committed %d, first idx %d",
+			l.committed, entries[0].Index))
 	}
 	l.inmem.merge(entries)
 }
@@ -337,12 +347,16 @@ func (l *entryLog) commitTo(index uint64) {
 		return
 	}
 	if index > l.lastIndex() {
-		plog.Panicf("invalid commitTo index %d, lastIndex() %d",
-			index, l.lastIndex())
+		plog.Error("invalid commitTo index",
+			"index", index, "last_index", l.lastIndex())
+		panic(fmt.Errorf("invalid commitTo index %d, lastIndex() %d",
+			index, l.lastIndex()))
 	}
 	if index < l.committed {
-		plog.Panicf("committed value moving backwards index %d, committed %d",
-			index, l.committed)
+		plog.Error("committed value moving backwards",
+			"index", index, "committed", l.committed)
+		panic(fmt.Errorf("committed value moving backwards index %d, committed %d",
+			index, l.committed))
 	}
 	l.committed = index
 }
@@ -351,19 +365,25 @@ func (l *entryLog) commitUpdate(cu pb.UpdateCommit) {
 	l.inmem.commitUpdate(cu)
 	if cu.Processed > 0 {
 		if cu.Processed < l.processed || cu.Processed > l.committed {
-			plog.Panicf("invalid ApplyReturnedTo %d, current applied %d, committed %d",
-				cu.Processed, l.processed, l.committed)
+			plog.Error("invalid ApplyReturnedTo",
+				"processed", cu.Processed, "applied", l.processed, "committed", l.committed)
+			panic(fmt.Errorf("invalid ApplyReturnedTo %d, current applied %d, committed %d",
+				cu.Processed, l.processed, l.committed))
 		}
 		l.processed = cu.Processed
 	}
 	if cu.LastApplied > 0 {
 		if cu.LastApplied > l.committed {
-			plog.Panicf("invalid last applied %d, committed %d",
-				cu.LastApplied, l.committed)
+			plog.Error("invalid last applied",
+				"last_applied", cu.LastApplied, "committed", l.committed)
+			panic(fmt.Errorf("invalid last applied %d, committed %d",
+				cu.LastApplied, l.committed))
 		}
 		if cu.LastApplied > l.processed {
-			plog.Panicf("invalid last applied %d, processed %d",
-				cu.LastApplied, l.processed)
+			plog.Error("invalid last applied",
+				"last_applied", cu.LastApplied, "processed", l.processed)
+			panic(fmt.Errorf("invalid last applied %d, processed %d",
+				cu.LastApplied, l.processed))
 		}
 		l.inmem.appliedLogTo(cu.LastApplied)
 	}
@@ -411,8 +431,10 @@ func (l *entryLog) tryCommit(index uint64, term uint64) (bool, error) {
 func (l *entryLog) restore(s pb.Snapshot) {
 	l.inmem.restore(s)
 	if s.Index < l.committed {
-		plog.Panicf("committed value moving backwards ss index %d, committed %d",
-			s.Index, l.committed)
+		plog.Error("committed value moving backwards",
+			"snapshot_index", s.Index, "committed", l.committed)
+		panic(fmt.Errorf("committed value moving backwards ss index %d, committed %d",
+			s.Index, l.committed))
 	}
 	l.committed = s.Index
 	l.processed = s.Index

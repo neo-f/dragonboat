@@ -57,6 +57,8 @@ package dragonboat // github.com/neo-f/dragonboat/v4
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"math"
 	"reflect"
 	"runtime"
@@ -223,12 +225,12 @@ type SnapshotOption struct {
 func (o SnapshotOption) Validate() error {
 	if o.OverrideCompactionOverhead {
 		if o.CompactionOverhead > 0 && o.CompactionIndex > 0 {
-			plog.Errorf("both CompactionOverhead and CompactionIndex are set")
+			plog.Error("both CompactionOverhead and CompactionIndex are set")
 			return ErrInvalidOption
 		}
 	} else {
 		if o.CompactionOverhead > 0 || o.CompactionIndex > 0 {
-			plog.Warningf("CompactionOverhead and CompactionIndex will be ignored")
+			plog.Warn("CompactionOverhead and CompactionIndex will be ignored")
 		}
 	}
 	return nil
@@ -344,7 +346,7 @@ func NewNodeHost(nhConfig config.NodeHostConfig) (*NodeHost, error) {
 		}
 	}()
 	did := nh.nhConfig.GetDeploymentID()
-	plog.Infof("DeploymentID set to %d", did)
+	plog.Info("DeploymentID set", "deployment_id", did)
 	if err := nh.createLogDB(); err != nil {
 		nh.Close()
 		return nil, err
@@ -353,7 +355,7 @@ func NewNodeHost(nhConfig config.NodeHostConfig) (*NodeHost, error) {
 		nh.Close()
 		return nil, err
 	}
-	plog.Infof("NodeHost ID: %s", nh.id.String())
+	plog.Info("NodeHost ID", "nodehost_id", nh.id.String())
 	if err := nh.createNodeRegistry(); err != nil {
 		nh.Close()
 		return nil, err
@@ -361,7 +363,7 @@ func NewNodeHost(nhConfig config.NodeHostConfig) (*NodeHost, error) {
 	errorInjection := false
 	if nhConfig.Expert.FS != nil {
 		_, errorInjection = nhConfig.Expert.FS.(*vfs.ErrorFS)
-		plog.Infof("filesystem error injection mode enabled: %t", errorInjection)
+		plog.Info("filesystem error injection mode", "enabled", errorInjection)
 	}
 	nh.engine = newExecEngine(nh, nhConfig.Expert.Engine,
 		nh.nhConfig.NotifyCommit, errorInjection, nh.env, nh.mu.logdb)
@@ -401,14 +403,14 @@ func (nh *NodeHost) Close() {
 	})
 	for _, node := range nodes {
 		if err := nh.stopNode(node.ShardID, node.ReplicaID, true); err != nil {
-			plog.Errorf("failed to remove shard %s",
-				logutil.ShardID(node.ShardID))
+			plog.Error("failed to remove shard",
+				"shard_id", logutil.ShardID(node.ShardID))
 		}
 	}
-	plog.Debugf("%s is stopping the nh stopper", nh.describe())
+	plog.Debug("stopping the nh stopper", "id", nh.describe())
 	nh.stopper.Stop()
 	var err error
-	plog.Debugf("%s is stopping the tranport module", nh.describe())
+	plog.Debug("stopping the transport module", "id", nh.describe())
 	if nh.transport != nil {
 		err = firstError(err, nh.transport.Close())
 	}
@@ -416,20 +418,20 @@ func (nh *NodeHost) Close() {
 		err = firstError(err, nh.nodes.Close())
 		nh.nodes = nil
 	}
-	plog.Debugf("%s is stopping the engine module", nh.describe())
+	plog.Debug("stopping the engine module", "id", nh.describe())
 	if nh.engine != nil {
 		err = firstError(err, nh.engine.close())
 		nh.engine = nil
 		nh.transport = nil
 	}
-	plog.Debugf("%s is stopping the logdb module", nh.describe())
+	plog.Debug("stopping the logdb module", "id", nh.describe())
 	if nh.mu.logdb != nil {
 		err = firstError(err, nh.mu.logdb.Close())
 		nh.mu.logdb = nil
 	}
-	plog.Debugf("%s is stopping the env module", nh.describe())
+	plog.Debug("stopping the env module", "id", nh.describe())
 	err = firstError(err, nh.env.Close())
-	plog.Debugf("NodeHost %s stopped", nh.describe())
+	plog.Debug("NodeHost stopped", "id", nh.describe())
 	if err != nil {
 		panicNow(err)
 	}
@@ -740,7 +742,9 @@ func (nh *NodeHost) SyncGetSession(ctx context.Context,
 		return nil, err
 	}
 	if result.Value != cs.ClientID {
-		plog.Panicf("unexpected result %d, want %d", result.Value, cs.ClientID)
+		plog.Error("unexpected result",
+			"value", result.Value, "client_id", cs.ClientID)
+		panic(fmt.Errorf("unexpected result %v, want %v", result.Value, cs.ClientID))
 	}
 	cs.PrepareForPropose()
 	return cs, nil
@@ -767,7 +771,9 @@ func (nh *NodeHost) SyncCloseSession(ctx context.Context,
 		return err
 	}
 	if result.Value != cs.ClientID {
-		plog.Panicf("unexpected result %d, want %d", result.Value, cs.ClientID)
+		plog.Error("unexpected result",
+			"value", result.Value, "client_id", cs.ClientID)
+		panic(fmt.Errorf("unexpected result %v, want %v", result.Value, cs.ClientID))
 	}
 	return nil
 }
@@ -825,7 +831,8 @@ func (nh *NodeHost) ProposeSession(session *client.Session,
 		return nil, ErrInvalidOperation
 	}
 	if !n.supportClientSession() && !session.IsNoOPSession() {
-		plog.Panicf("IOnDiskStateMachine based nodes must use NoOPSession")
+		plog.Error("IOnDiskStateMachine based nodes must use NoOPSession")
+		panic(errors.New("IOnDiskStateMachine based nodes must use NoOPSession"))
 	}
 	defer nh.engine.setStepReady(session.ShardID)
 	return n.proposeSession(session, nh.getTimeoutTick(timeout))
@@ -898,7 +905,7 @@ func (nh *NodeHost) StaleRead(shardID uint64,
 		return nil, ErrClosed
 	}
 	if atomic.CompareAndSwapUint32(&staleReadCalled, 0, 1) {
-		plog.Warningf("StaleRead called, linearizability not guaranteed for stale read")
+		plog.Warn("StaleRead called, linearizability not guaranteed for stale read")
 	}
 	n, ok := nh.getShard(shardID)
 	if !ok {
@@ -1245,8 +1252,8 @@ func (nh *NodeHost) RequestLeaderTransfer(shardID uint64,
 	if !ok {
 		return ErrShardNotFound
 	}
-	plog.Debugf("RequestLeaderTransfer called on shard %d target replicaID %d",
-		shardID, targetReplicaID)
+	plog.Debug("RequestLeaderTransfer called",
+		"shard_id", shardID, "target_replica_id", targetReplicaID)
 	defer nh.engine.setStepReady(shardID)
 	return n.requestLeaderTransfer(targetReplicaID)
 }
@@ -1306,7 +1313,7 @@ func (nh *NodeHost) RemoveData(shardID uint64, replicaID uint64) error {
 	if nh.engine.nodeLoaded(shardID, replicaID) {
 		return ErrShardNotStopped
 	}
-	plog.Debugf("%s called RemoveData", dn(shardID, replicaID))
+	plog.Debug("called RemoveData", "id", dn(shardID, replicaID))
 	if err := nh.mu.logdb.RemoveNodeData(shardID, replicaID); err != nil {
 		panicNow(err)
 	}
@@ -1519,9 +1526,10 @@ func (nh *NodeHost) bootstrapShard(initialMembers map[uint64]Target,
 		return nil, false, err
 	}
 	if !bi.Validate(initialMembers, join, smType) {
-		plog.Errorf("bootstrap info validation failed, %s, %v, %t, %v, %t",
-			dn(cfg.ShardID, cfg.ReplicaID),
-			bi.Addresses, bi.Join, initialMembers, join)
+		plog.Error("bootstrap info validation failed",
+			"id", dn(cfg.ShardID, cfg.ReplicaID),
+			slog.Any("addresses", bi.Addresses), "bootstrap_join", bi.Join,
+			slog.Any("initial_members", initialMembers), "join", join)
 		return nil, false, ErrInvalidShardSettings
 	}
 	return bi.Addresses, !bi.Join, nil
@@ -1704,13 +1712,13 @@ func (nh *NodeHost) createLogDB() error {
 			return server.ErrLogDBBrokenChange
 		}
 	}
-	plog.Infof("logdb memory limit: %d MBytes",
-		nh.nhConfig.Expert.LogDB.MemorySizeMB())
+	plog.Info("logdb memory limit",
+		"memory_size_mb", nh.nhConfig.Expert.LogDB.MemorySizeMB())
 	return nil
 }
 
 func (nh *NodeHost) handleLogDBInfo(info config.LogDBInfo) {
-	plog.Infof("LogDB info received, shard %d, busy %t", info.Shard, info.Busy)
+	plog.Info("LogDB info received", "shard_id", info.Shard, "busy", info.Busy)
 	nh.mu.Lock()
 	defer nh.mu.Unlock()
 	lm := nh.getLogDBMetrics(info.Shard)
@@ -1757,7 +1765,7 @@ func (nh *NodeHost) createNodeRegistry() error {
 		if nh.nhConfig.Expert.NodeRegistryFactory != nil {
 			return errors.New("DefaultNodeRegistryEnabled and Expert.NodeRegistryFactory should not both be set")
 		}
-		plog.Infof("DefaultNodeRegistryEnabled: true, use gossip based node registry")
+		plog.Info("DefaultNodeRegistryEnabled: true, use gossip based node registry")
 		r, err := registry.NewGossipRegistry(nh.ID(), nh.getShardInfo,
 			nh.nhConfig, streamConnections, validator)
 		if err != nil {
@@ -1766,14 +1774,14 @@ func (nh *NodeHost) createNodeRegistry() error {
 		nh.registry = r.GetNodeHostRegistry()
 		nh.nodes = r
 	} else if nh.nhConfig.Expert.NodeRegistryFactory != nil {
-		plog.Infof("Expert.NodeRegistryFactory was set: using custom registry")
+		plog.Info("Expert.NodeRegistryFactory was set: using custom registry")
 		r, err := nh.nhConfig.Expert.NodeRegistryFactory.Create(nh.ID(), streamConnections, validator)
 		if err != nil {
 			return err
 		}
 		nh.nodes = r
 	} else {
-		plog.Infof("using regular node registry")
+		plog.Info("using regular node registry")
 		nh.nodes = registry.NewNodeRegistry(streamConnections, validator)
 	}
 	return nil
@@ -1886,9 +1894,10 @@ func (nh *NodeHost) sendMessage(msg pb.Message) {
 		nh.transport.Send(msg)
 	} else {
 		witness := msg.Snapshot.Witness
-		plog.Debugf("%s is sending snapshot to %s, witness %t, index %d, size %d",
-			dn(msg.ShardID, msg.From), dn(msg.ShardID, msg.To),
-			witness, msg.Snapshot.Index, msg.Snapshot.FileSize)
+		plog.Debug("sending snapshot",
+			"id", dn(msg.ShardID, msg.From), "to", dn(msg.ShardID, msg.To),
+			"witness", witness, "index", msg.Snapshot.Index,
+			"size", msg.Snapshot.FileSize)
 		if n, ok := nh.getShard(msg.ShardID); ok {
 			if witness || !n.OnDiskStateMachine() {
 				nh.transport.SendSnapshot(msg)
@@ -1945,7 +1954,7 @@ func (nh *NodeHost) nodeMonitorMain() {
 			// node closed
 			n := nodes[index]
 			if err := nh.stopNode(n.shardID, n.replicaID, true); err != nil {
-				plog.Debugf("stopNode failed %v", err)
+				plog.Debug("stopNode failed", "error", err)
 			}
 		} else if index == len(nodes) {
 			// cci change
@@ -1954,7 +1963,9 @@ func (nh *NodeHost) nodeMonitorMain() {
 			// stopped
 			return
 		} else {
-			plog.Panicf("unknown node list change state, %d, %t", index, ok)
+			plog.Error("unknown node list change state",
+				"index", index, "ok", ok)
+			panic(fmt.Errorf("unknown node list change state, %v, %v", index, ok))
 		}
 	}
 }
@@ -1968,9 +1979,9 @@ func (nh *NodeHost) describe() string {
 }
 
 func (nh *NodeHost) logNodeHostDetails() {
-	plog.Infof("transport type: %s", nh.transport.Name())
-	plog.Infof("logdb type: %s", nh.mu.logdb.Name())
-	plog.Infof("nodehost address: %s", nh.nhConfig.RaftAddress)
+	plog.Info("transport type", "name", nh.transport.Name())
+	plog.Info("logdb type", "name", nh.mu.logdb.Name())
+	plog.Info("nodehost address", "address", nh.nhConfig.RaftAddress)
 }
 
 func getRequestState(ctx context.Context, rs *RequestState) (sm.Result, error) {
@@ -1989,7 +2000,8 @@ func getRequestState(ctx context.Context, rs *RequestState) (sm.Result, error) {
 		} else if r.Aborted() {
 			return sm.Result{}, ErrAborted
 		}
-		plog.Panicf("unknown v code %v", r)
+		plog.Error("unknown v code", slog.Any("code", r))
+		panic(fmt.Errorf("unknown v code %v", r))
 	case <-ctx.Done():
 		if ctx.Err() == context.Canceled {
 			return sm.Result{}, ErrCanceled
@@ -2093,12 +2105,14 @@ func (h *messageHandler) HandleMessageBatch(msg pb.MessageBatch) (uint64, uint64
 	}
 	for _, req := range msg.Requests {
 		if req.To == 0 {
-			plog.Panicf("to field not set, %s", req.Type)
+			plog.Error("to field not set", "type", req.Type)
+			panic(fmt.Errorf("to field not set, %v", req.Type))
 		}
 		if n, ok := nh.getShard(req.ShardID); ok {
 			if n.replicaID != req.To {
-				plog.Warningf("ignored a %s message sent to %s but received by %s",
-					req.Type, dn(req.ShardID, req.To), dn(req.ShardID, n.replicaID))
+				plog.Warn("ignored a message sent to another replica",
+					"type", req.Type, "to", dn(req.ShardID, req.To),
+					"received_by", dn(req.ShardID, n.replicaID))
 				continue
 			}
 			switch req.Type {
@@ -2106,8 +2120,8 @@ func (h *messageHandler) HandleMessageBatch(msg pb.MessageBatch) (uint64, uint64
 				n.mq.MustAdd(req)
 				snapshotCount++
 			case pb.SnapshotReceived:
-				plog.Debugf("SnapshotReceived received, shard id %d, replica id %d",
-					req.ShardID, req.From)
+				plog.Debug("SnapshotReceived received",
+					"shard_id", req.ShardID, "replica_id", req.From)
 				n.mq.AddDelayed(pb.Message{
 					Type: pb.SnapshotStatus,
 					From: req.From,
@@ -2115,7 +2129,7 @@ func (h *messageHandler) HandleMessageBatch(msg pb.MessageBatch) (uint64, uint64
 				msgCount++
 			default:
 				if added, stopped := n.mq.Add(req); !added || stopped {
-					plog.Warningf("dropped an incoming message")
+					plog.Warn("dropped an incoming message")
 				} else {
 					msgCount++
 				}
@@ -2168,7 +2182,8 @@ func (h *messageHandler) HandleSnapshot(shardID uint64,
 		Type:    pb.SnapshotReceived,
 	}
 	h.nh.sendMessage(m)
-	plog.Debugf("%s sent SnapshotReceived to %d", dn(shardID, replicaID), from)
+	plog.Debug("sent SnapshotReceived",
+		"id", dn(shardID, replicaID), "to", from)
 	h.nh.events.sys.Publish(server.SystemEvent{
 		Type:      server.SnapshotReceived,
 		ShardID:   shardID,
@@ -2182,13 +2197,14 @@ func logBuildTagsAndVersion() {
 	if DEVVersion {
 		devstr = "Dev"
 	}
-	plog.Infof("go version: %s, %s/%s",
-		runtime.Version(), runtime.GOOS, runtime.GOARCH)
-	plog.Infof("dragonboat version: %d.%d.%d (%s)",
-		DragonboatMajor, DragonboatMinor, DragonboatPatch, devstr)
+	plog.Info("go version",
+		"version", runtime.Version(), "os", runtime.GOOS, "arch", runtime.GOARCH)
+	plog.Info("dragonboat version",
+		"major", DragonboatMajor, "minor", DragonboatMinor,
+		"patch", DragonboatPatch, "build_type", devstr)
 	if !invariants.IsSupportedOS() || !invariants.IsSupportedArch() {
-		plog.Warningf("unsupported OS/ARCH %s/%s, don't use for production",
-			runtime.GOOS, runtime.GOARCH)
+		plog.Warn("unsupported OS/ARCH, don't use for production",
+			"os", runtime.GOOS, "arch", runtime.GOARCH)
 	}
 }
 
@@ -2196,6 +2212,7 @@ func panicNow(err error) {
 	if err == nil {
 		panic("panicNow called with nil error")
 	}
-	plog.Panicf("%+v", err)
+	plog.Error("panicNow",
+		slog.String("error", fmt.Sprintf("%+v", err)))
 	panic(err)
 }

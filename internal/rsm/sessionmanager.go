@@ -15,6 +15,7 @@
 package rsm
 
 import (
+	"fmt"
 	"io"
 
 	sm "github.com/neo-f/dragonboat/v4/statemachine"
@@ -55,10 +56,12 @@ func (ds *SessionManager) RegisterClientID(clientID uint64) sm.Result {
 	es, ok := ds.lru.getSession(RaftClientID(clientID))
 	if ok {
 		if es.ClientID != RaftClientID(clientID) {
-			plog.Panicf("returned an expected session, got id %d, want %d",
-				es.ClientID, clientID)
+			plog.Error("returned an expected session",
+				"got", es.ClientID, "want", clientID)
+			panic(fmt.Errorf("returned an expected session, got id %d, want %d",
+				es.ClientID, clientID))
 		}
-		plog.Warningf("client ID %d already exist", clientID)
+		plog.Warn("client ID already exist", "client_id", clientID)
 		return sm.Result{}
 	}
 	s := newSession(RaftClientID(clientID))
@@ -75,8 +78,10 @@ func (ds *SessionManager) UnregisterClientID(clientID uint64) sm.Result {
 		return sm.Result{}
 	}
 	if es.ClientID != RaftClientID(clientID) {
-		plog.Panicf("returned an expected session, got id %d, want %d",
-			es.ClientID, clientID)
+		plog.Error("returned an expected session",
+			"got", es.ClientID, "want", clientID)
+		panic(fmt.Errorf("returned an expected session, got id %d, want %d",
+			es.ClientID, clientID))
 	}
 	ds.lru.delSession(RaftClientID(clientID))
 	return sm.Result{Value: clientID}
@@ -87,8 +92,10 @@ func (ds *SessionManager) ClientRegistered(clientID uint64) (*Session, bool) {
 	es, ok := ds.lru.getSession(RaftClientID(clientID))
 	if ok {
 		if es.ClientID != RaftClientID(clientID) {
-			plog.Panicf("returned an expected session, got id %d, want %d",
-				es.ClientID, clientID)
+			plog.Error("returned an expected session",
+				"got", es.ClientID, "want", clientID)
+			panic(fmt.Errorf("returned an expected session, got id %d, want %d",
+				es.ClientID, clientID))
 		}
 	}
 	return es, ok

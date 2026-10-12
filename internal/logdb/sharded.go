@@ -16,6 +16,7 @@ package logdb
 
 import (
 	"fmt"
+	"log/slog"
 	"math"
 	"sync/atomic"
 
@@ -66,7 +67,8 @@ func OpenShardedDB(config config.NodeHostConfig, cb config.LogDBCallback,
 		panic("config.Expert.LogDB.IsEmpty()")
 	}
 	if check && batched {
-		plog.Panicf("check and batched both set")
+		plog.Error("check and batched both set")
+		panic(errors.New("check and batched both set"))
 	}
 	shards := make([]*db, 0)
 	closeAll := func(all []*db) {
@@ -75,7 +77,8 @@ func OpenShardedDB(config config.NodeHostConfig, cb config.LogDBCallback,
 			err = firstError(err, s.close())
 		}
 		if err != nil {
-			plog.Panicf("%+v", err)
+			plog.Error("failed to close all shards",
+				slog.String("error", fmt.Sprintf("%+v", err)))
 			panic("not suppose to reach here")
 		}
 	}
@@ -108,9 +111,9 @@ func OpenShardedDB(config config.NodeHostConfig, cb config.LogDBCallback,
 		}
 	}
 	if batched {
-		plog.Infof("using batched logdb")
+		plog.Info("using batched logdb")
 	} else {
-		plog.Infof("using plain logdb")
+		plog.Info("using plain logdb")
 	}
 	partitioner := server.NewDoubleFixedPartitioner(config.Expert.Engine.ExecShards,
 		config.Expert.LogDB.Shards)
@@ -161,7 +164,10 @@ func (s *ShardedDB) SelfCheckFailed() (bool, error) {
 // to the log db.
 func (s *ShardedDB) SaveRaftState(updates []pb.Update, shardID uint64) error {
 	if shardID-1 >= uint64(len(s.ctxs)) {
-		plog.Panicf("invalid shardID %d, len(s.ctxs): %d", shardID, len(s.ctxs))
+		plog.Error("invalid shardID",
+			"shard_id", shardID, "ctxs_len", len(s.ctxs))
+		panic(fmt.Errorf("invalid shardID %d, len(s.ctxs): %d",
+			shardID, len(s.ctxs)))
 	}
 	ctx := s.ctxs[shardID-1]
 	ctx.Reset()
@@ -301,11 +307,13 @@ func (s *ShardedDB) getParititionID(updates []pb.Update) uint64 {
 		if pid == math.MaxUint64 {
 			pid = id
 		} else if pid != id {
-			plog.Panicf("multiple pid value found")
+			plog.Error("multiple pid value found")
+			panic(errors.New("multiple pid value found"))
 		}
 	}
 	if pid == uint64(math.MaxUint64) {
-		plog.Panicf("invalid partition id")
+		plog.Error("invalid partition id")
+		panic(errors.New("invalid partition id"))
 	}
 	return pid
 }
@@ -353,8 +361,8 @@ func (s *ShardedDB) compact() error {
 			}
 			atomic.AddUint64(&s.completedCompactions, 1)
 			close(t.done)
-			plog.Infof("%s completed LogDB compaction up to index %d",
-				dn(t.shardID, t.replicaID), t.index)
+			plog.Info("completed LogDB compaction",
+				"id", dn(t.shardID, t.replicaID), "index", t.index)
 			select {
 			case <-s.stopper.ShouldStop():
 				return nil
@@ -367,6 +375,7 @@ func (s *ShardedDB) compact() error {
 }
 
 func panicNow(err error) {
-	plog.Panicf("%+v", err)
+	plog.Error("unrecoverable error",
+		slog.String("error", fmt.Sprintf("%+v", err)))
 	panic(err)
 }

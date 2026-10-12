@@ -39,7 +39,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/neo-f/dragonboat/v4/logger"
 	pb "github.com/neo-f/dragonboat/v4/raftpb"
 )
 
@@ -302,17 +301,9 @@ func TestCandidateFallback(t *testing.T) {
 }
 
 func TestFollowerElectionTimeoutRandomized(t *testing.T) {
-	// SetLogger(discardLogger)
-	// defer SetLogger(defaultLogger)
-	plog.SetLevel(logger.WARNING)
-	defer plog.SetLevel(logger.INFO)
 	testNonleaderElectionTimeoutRandomized(t, follower)
 }
 func TestCandidateElectionTimeoutRandomized(t *testing.T) {
-	// SetLogger(discardLogger)
-	// defer SetLogger(defaultLogger)
-	plog.SetLevel(logger.WARNING)
-	defer plog.SetLevel(logger.INFO)
 	testNonleaderElectionTimeoutRandomized(t, candidate)
 }
 
@@ -348,17 +339,9 @@ func testNonleaderElectionTimeoutRandomized(t *testing.T, state State) {
 }
 
 func TestFollowersElectioinTimeoutNonconflict(t *testing.T) {
-	// SetLogger(discardLogger)
-	// defer SetLogger(defaultLogger)
-	plog.SetLevel(logger.WARNING)
-	defer plog.SetLevel(logger.INFO)
 	testNonleadersElectionTimeoutNonconflict(t, follower)
 }
 func TestCandidatesElectionTimeoutNonconflict(t *testing.T) {
-	// SetLogger(discardLogger)
-	// defer SetLogger(defaultLogger)
-	plog.SetLevel(logger.WARNING)
-	defer plog.SetLevel(logger.INFO)
 	testNonleadersElectionTimeoutNonconflict(t, candidate)
 }
 

@@ -22,6 +22,8 @@ package rsm
 
 import (
 	"bytes"
+	"fmt"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 
@@ -34,13 +36,12 @@ import (
 	"github.com/neo-f/dragonboat/v4/internal/settings"
 	"github.com/neo-f/dragonboat/v4/internal/utils"
 	"github.com/neo-f/dragonboat/v4/internal/vfs"
-	"github.com/neo-f/dragonboat/v4/logger"
 	pb "github.com/neo-f/dragonboat/v4/raftpb"
 	sm "github.com/neo-f/dragonboat/v4/statemachine"
 )
 
 var (
-	plog = logger.GetLogger("rsm")
+	plog = slog.With("pkg", "rsm")
 )
 
 var (
@@ -251,15 +252,15 @@ func (s *StateMachine) Recover(t Task) (_ pb.Snapshot, err error) {
 	if pb.IsEmptySnapshot(ss) {
 		return pb.Snapshot{}, nil
 	}
-	plog.Debugf("%s called Recover, %s, on disk idx %d",
-		s.id(), s.ssid(ss.Index), ss.OnDiskIndex)
+	plog.Debug("called Recover",
+		"id", s.id(), "snapshot", s.ssid(ss.Index), "on_disk_index", ss.OnDiskIndex)
 	if err := s.recover(ss, t.Initial); err != nil {
 		return pb.Snapshot{}, err
 	}
 	if err := s.node.RestoreRemotes(ss); err != nil {
 		return pb.Snapshot{}, err
 	}
-	plog.Debugf("%s restored %s", s.id(), s.ssid(ss.Index))
+	plog.Debug("restored snapshot", "id", s.id(), "snapshot", s.ssid(ss.Index))
 	return ss, nil
 }
 
@@ -273,12 +274,15 @@ func (s *StateMachine) getSnapshot(t Task) (pb.Snapshot, error) {
 			return pb.Snapshot{}, err
 		}
 		if ss.Index < t.Index {
-			plog.Panicf("%s out of date snapshot, %d, %d", s.id(), ss.Index, t.Index)
+			plog.Error("out of date snapshot",
+				"id", s.id(), "snapshot_index", ss.Index, "index", t.Index)
+			panic(fmt.Errorf("%s out of date snapshot, %d, %d",
+				s.id(), ss.Index, t.Index))
 		}
 		return ss, nil
 	}
 	if s.snapshotter.IsNoSnapshotError(err) {
-		plog.Infof("%s no snapshot available during launch", s.id())
+		plog.Info("no snapshot available during launch", "id", s.id())
 		return pb.Snapshot{}, nil
 	}
 	return ss, nil
@@ -335,12 +339,18 @@ func (s *StateMachine) checkRecoverOnDiskSM(ss pb.Snapshot, init bool) {
 		return
 	}
 	if ss.OnDiskIndex <= s.onDiskInitIndex {
-		plog.Panicf("%s, ss.OnDiskIndex (%d) <= s.onDiskInitIndex (%d)",
-			s.id(), ss.OnDiskIndex, s.onDiskInitIndex)
+		plog.Error("ss.OnDiskIndex <= s.onDiskInitIndex",
+			"id", s.id(), "ss_on_disk_index", ss.OnDiskIndex,
+			"on_disk_init_index", s.onDiskInitIndex)
+		panic(fmt.Errorf("%s, ss.OnDiskIndex (%d) <= s.onDiskInitIndex (%d)",
+			s.id(), ss.OnDiskIndex, s.onDiskInitIndex))
 	}
 	if ss.OnDiskIndex <= s.onDiskIndex {
-		plog.Panicf("%s, ss.OnDiskInit (%d) <= s.onDiskIndex (%d)",
-			s.id(), ss.OnDiskIndex, s.onDiskIndex)
+		plog.Error("ss.OnDiskInit <= s.onDiskIndex",
+			"id", s.id(), "ss_on_disk_index", ss.OnDiskIndex,
+			"on_disk_index", s.onDiskIndex)
+		panic(fmt.Errorf("%s, ss.OnDiskInit (%d) <= s.onDiskIndex (%d)",
+			s.id(), ss.OnDiskIndex, s.onDiskIndex))
 	}
 }
 
@@ -350,12 +360,18 @@ func (s *StateMachine) checkPartialSnapshotApplyOnDiskSM(ss pb.Snapshot, init bo
 	// applied if we have at least the OnDiskIndex of the snapshot reached.
 	if init {
 		if ss.OnDiskIndex > s.onDiskInitIndex {
-			plog.Panicf("%s, ss.OnDiskIndex (%d) > s.onDiskInitIndex (%d)",
-				s.id(), ss.OnDiskIndex, s.onDiskInitIndex)
+			plog.Error("ss.OnDiskIndex > s.onDiskInitIndex",
+				"id", s.id(), "ss_on_disk_index", ss.OnDiskIndex,
+				"on_disk_init_index", s.onDiskInitIndex)
+			panic(fmt.Errorf("%s, ss.OnDiskIndex (%d) > s.onDiskInitIndex (%d)",
+				s.id(), ss.OnDiskIndex, s.onDiskInitIndex))
 		}
 	} else if ss.OnDiskIndex > s.onDiskIndex {
-		plog.Panicf("%s, ss.OnDiskInit (%d) > s.onDiskIndex (%d)",
-			s.id(), ss.OnDiskIndex, s.onDiskIndex)
+		plog.Error("ss.OnDiskInit > s.onDiskIndex",
+			"id", s.id(), "ss_on_disk_index", ss.OnDiskIndex,
+			"on_disk_index", s.onDiskIndex)
+		panic(fmt.Errorf("%s, ss.OnDiskInit (%d) > s.onDiskIndex (%d)",
+			s.id(), ss.OnDiskIndex, s.onDiskIndex))
 	}
 }
 
@@ -405,7 +421,8 @@ func (s *StateMachine) doRecover(ss pb.Snapshot, init bool) error {
 
 func (s *StateMachine) load(ss pb.Snapshot, init bool) error {
 	if err := s.snapshotter.Load(ss, s.sessions, s.sm); err != nil {
-		plog.Errorf("%s failed to load %s, %v", s.id(), s.ssid(ss.Index), err)
+		plog.Error("failed to load snapshot",
+			"id", s.id(), "snapshot", s.ssid(ss.Index), "error", err)
 		if errors.Is(err, sm.ErrSnapshotStopped) {
 			s.aborted = true
 		}
@@ -416,7 +433,8 @@ func (s *StateMachine) load(ss pb.Snapshot, init bool) error {
 
 func (s *StateMachine) apply(ss pb.Snapshot, init bool) {
 	index := ss.Index
-	plog.Debugf("%s recovering from %s, init %t", s.id(), s.ssid(index), init)
+	plog.Debug("recovering from snapshot",
+		"id", s.id(), "snapshot", s.ssid(index), "init", init)
 	s.logMembership("members", index, ss.Membership.Addresses)
 	s.logMembership("nonVotings", index, ss.Membership.NonVotings)
 	s.logMembership("witnesses", index, ss.Membership.Witnesses)
@@ -464,13 +482,13 @@ func (s *StateMachine) OpenOnDiskStateMachine() (uint64, error) {
 	s.tryInjectTestFS()
 	index, err := s.sm.Open()
 	if err != nil {
-		plog.Errorf("%s failed to open on disk SM, %v", s.id(), err)
+		plog.Error("failed to open on disk SM", "id", s.id(), "error", err)
 		if errors.Is(err, sm.ErrOpenStopped) {
 			s.aborted = true
 		}
 		return 0, err
 	}
-	plog.Infof("%s opened disk SM, index %d", s.id(), index)
+	plog.Info("opened disk SM", "id", s.id(), "index", index)
 	s.onDiskInitIndex = index
 	s.onDiskIndex = index
 	return index, nil
@@ -555,7 +573,8 @@ func (s *StateMachine) Save(req SSRequest) (pb.Snapshot, SSEnv, error) {
 		panic("invalid snapshot request")
 	}
 	if s.isWitness {
-		plog.Panicf("witness %s saving snapshot", s.id())
+		plog.Error("witness saving snapshot", "id", s.id())
+		panic(fmt.Errorf("witness %s saving snapshot", s.id()))
 	}
 	if s.Concurrent() {
 		return s.concurrentSave(req)
@@ -650,15 +669,18 @@ func (s *StateMachine) isDummySnapshot(r SSRequest) bool {
 
 func (s *StateMachine) logMembership(name string,
 	index uint64, members map[uint64]string) {
-	plog.Debugf("%d %s included in %s", len(members), name, s.ssid(index))
+	plog.Debug("members included in snapshot",
+		"count", len(members), "name", name, "snapshot", s.ssid(index))
 	for nid, addr := range members {
-		plog.Debugf("\t%s : %s", logutil.ReplicaID(nid), addr)
+		plog.Debug("member",
+			"replica_id", logutil.ReplicaID(nid), "address", addr)
 	}
 }
 
 func (s *StateMachine) getSSMeta(c any, r SSRequest) (SSMeta, error) {
 	if s.members.isEmpty() {
-		plog.Panicf("%s, empty membership", s.id())
+		plog.Error("empty membership", "id", s.id())
+		panic(fmt.Errorf("%s, empty membership", s.id()))
 	}
 	ct := s.sct
 	// never compress dummy snapshot file
@@ -715,11 +737,15 @@ func (s *StateMachine) setSyncedIndex(index uint64) {
 
 func (s *StateMachine) setApplied(index uint64, term uint64) {
 	if s.index+1 != index {
-		plog.Panicf("%s, applied index %d, new index %d",
-			s.id(), s.index, index)
+		plog.Error("applied index gap",
+			"id", s.id(), "applied_index", s.index, "new_index", index)
+		panic(fmt.Errorf("%s, applied index %d, new index %d",
+			s.id(), s.index, index))
 	}
 	if s.term > term {
-		plog.Panicf("%s, applied term %d, new term %d", s.id(), s.term, term)
+		plog.Error("applied term moving backward",
+			"id", s.id(), "applied_term", s.term, "new_term", term)
+		panic(fmt.Errorf("%s, applied term %d, new term %d", s.id(), s.term, term))
 	}
 	s.index, s.term = index, term
 }
@@ -730,17 +756,24 @@ func (s *StateMachine) setLastApplied(entries []pb.Entry) {
 		term := uint64(0)
 		for idx, e := range entries {
 			if e.Index == 0 || e.Term == 0 {
-				plog.Panicf("invalid entry, %v", e)
+				plog.Error("invalid entry", slog.Any("entry", e))
+				panic(fmt.Errorf("invalid entry, %v", e))
 			}
 			if idx == 0 {
 				index = e.Index
 				term = e.Term
 			} else {
 				if e.Index != index+1 {
-					plog.Panicf("%s, index gap found, %d,%d", s.id(), index, e.Index)
+					plog.Error("index gap found",
+						"id", s.id(), "index", index, "entry_index", e.Index)
+					panic(fmt.Errorf("%s, index gap found, %d,%d",
+						s.id(), index, e.Index))
 				}
 				if e.Term < term {
-					plog.Panicf("%s, term moving backward, %d, %d", s.id(), term, e.Term)
+					plog.Error("term moving backward",
+						"id", s.id(), "term", term, "entry_term", e.Term)
+					panic(fmt.Errorf("%s, term moving backward, %d, %d",
+						s.id(), term, e.Term))
 				}
 				index = e.Index
 				term = e.Term
@@ -749,11 +782,15 @@ func (s *StateMachine) setLastApplied(entries []pb.Entry) {
 		s.lastApplied.Lock()
 		defer s.lastApplied.Unlock()
 		if s.lastApplied.index+1 != entries[0].Index {
-			plog.Panicf("%s, gap between batches, %d, %d",
-				s.id(), s.lastApplied.index, entries[0].Index)
+			plog.Error("gap between batches",
+				"id", s.id(), "last_applied", s.lastApplied.index,
+				"first_index", entries[0].Index)
+			panic(fmt.Errorf("%s, gap between batches, %d, %d",
+				s.id(), s.lastApplied.index, entries[0].Index))
 		}
 		if s.lastApplied.term > entries[0].Term {
-			plog.Panicf("%s, invalid term", s.id())
+			plog.Error("invalid term", "id", s.id())
+			panic(fmt.Errorf("%s, invalid term", s.id()))
 		}
 		s.lastApplied.index = entries[len(entries)-1].Index
 		s.lastApplied.term = entries[len(entries)-1].Term
@@ -816,7 +853,7 @@ func (s *StateMachine) save(r SSRequest) (pb.Snapshot, SSEnv, error) {
 	defer s.mu.RUnlock()
 	meta, err := s.prepare(r)
 	if err != nil {
-		plog.Errorf("prepare snapshot failed %v", err)
+		plog.Error("prepare snapshot failed", "error", err)
 		return pb.Snapshot{}, SSEnv{}, err
 	}
 	return s.doSave(meta)
@@ -854,7 +891,7 @@ func (s *StateMachine) sync() error {
 func (s *StateMachine) doSave(meta SSMeta) (pb.Snapshot, SSEnv, error) {
 	ss, env, err := s.snapshotter.Save(s.sm, meta)
 	if err != nil {
-		plog.Errorf("%s snapshotter.Save failed %v", s.id(), err)
+		plog.Error("snapshotter.Save failed", "id", s.id(), "error", err)
 		return pb.Snapshot{}, env, err
 	}
 	s.snapshotIndex = meta.Index
@@ -879,7 +916,9 @@ func (s *StateMachine) handle(t []Task, a []sm.Entry) error {
 	batch := batchedEntryApply && s.Concurrent()
 	for idx := range t {
 		if t[idx].IsSnapshotTask() || t[idx].isSyncTask() {
-			plog.Panicf("%s trying to handle a snapshot/sync request", s.id())
+			plog.Error("trying to handle a snapshot/sync request",
+				"id", s.id())
+			panic(fmt.Errorf("%s trying to handle a snapshot/sync request", s.id()))
 		}
 		// TODO: add a test for this
 		var entries []pb.Entry
@@ -925,10 +964,16 @@ func (s *StateMachine) setOnDiskIndex(first uint64, last uint64) {
 		panic("first > last")
 	}
 	if first <= s.onDiskInitIndex {
-		plog.Panicf("first index %d, init on disk %d", first, s.onDiskInitIndex)
+		plog.Error("first index <= onDiskInitIndex",
+			"first_index", first, "on_disk_init_index", s.onDiskInitIndex)
+		panic(fmt.Errorf("first index %d, init on disk %d",
+			first, s.onDiskInitIndex))
 	}
 	if first <= s.onDiskIndex {
-		plog.Panicf("first index %d, on disk index %d", first, s.onDiskIndex)
+		plog.Error("first index <= onDiskIndex",
+			"first_index", first, "on_disk_index", s.onDiskIndex)
+		panic(fmt.Errorf("first index %d, on disk index %d",
+			first, s.onDiskIndex))
 	}
 	s.onDiskIndex = last
 }
@@ -1004,8 +1049,11 @@ func (s *StateMachine) handleBatch(input []pb.Entry, ents []sm.Entry) error {
 			ce := input[skipped+idx]
 			if ce.Index != e.Index {
 				// probably because user modified the Index value in results
-				plog.Panicf("%s alignment error, %d, %d, %d",
-					s.id(), ce.Index, e.Index, skipped)
+				plog.Error("alignment error",
+					"id", s.id(), "ce_index", ce.Index, "entry_index", e.Index,
+					"skipped", skipped)
+				panic(fmt.Errorf("%s alignment error, %d, %d, %d",
+					s.id(), ce.Index, e.Index, skipped))
 			}
 			last := ce.Index == input[len(input)-1].Index
 			s.onApplied(ce, e.Result, false, false, last)

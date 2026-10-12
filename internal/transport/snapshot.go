@@ -34,6 +34,8 @@
 package transport
 
 import (
+	"fmt"
+	"log/slog"
 	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
@@ -53,7 +55,7 @@ var (
 // SendSnapshot asynchronously sends raft snapshot message to its target.
 func (t *Transport) SendSnapshot(m pb.Message) bool {
 	if !t.sendSnapshot(m) {
-		plog.Errorf("failed to send snapshot to %s", dn(m.ShardID, m.To))
+		plog.Error("failed to send snapshot", "target", dn(m.ShardID, m.To))
 		t.sendSnapshotNotification(m.ShardID, m.To, true)
 		return false
 	}
@@ -64,7 +66,7 @@ func (t *Transport) SendSnapshot(m pb.Message) bool {
 func (t *Transport) GetStreamSink(shardID uint64, replicaID uint64) *Sink {
 	s := t.getStreamSink(shardID, replicaID)
 	if s == nil {
-		plog.Errorf("failed to connect to %s", dn(shardID, replicaID))
+		plog.Error("failed to connect", "target", dn(shardID, replicaID))
 		t.sendSnapshotNotification(shardID, replicaID, true)
 	}
 	return s
@@ -76,7 +78,7 @@ func (t *Transport) getStreamSink(shardID uint64, replicaID uint64) *Sink {
 		return nil
 	}
 	if !t.GetCircuitBreaker(addr).Ready() {
-		plog.Warningf("circuit breaker for %s is not ready", addr)
+		plog.Warn("circuit breaker is not ready", "address", addr)
 		return nil
 	}
 	key := raftio.GetNodeInfo(shardID, replicaID)
@@ -111,7 +113,8 @@ func (t *Transport) doSendSnapshot(m pb.Message) bool {
 	}
 	chunks, err := splitSnapshotMessage(m, t.fs)
 	if err != nil {
-		plog.Errorf("failed to get snapshot chunks %+v", err)
+		plog.Error("failed to get snapshot chunks",
+			slog.String("error", fmt.Sprintf("%+v", err)))
 		return false
 	}
 	addr, _, err := t.resolver.Resolve(shardID, toReplicaID)
@@ -145,7 +148,7 @@ func (t *Transport) createJob(key raftio.NodeInfo,
 	addr string, streaming bool, sz int) *job {
 	if v := atomic.AddUint64(&t.jobs, 1); v > maxConnectionCount {
 		r := atomic.AddUint64(&t.jobs, ^uint64(0))
-		plog.Warningf("job count is rate limited %d", r)
+		plog.Warn("job count is rate limited", "count", r)
 		return nil
 	}
 	job := newJob(t.ctx, key.ShardID, key.ReplicaID, t.nhConfig.GetDeploymentID(),
@@ -163,7 +166,8 @@ func (t *Transport) processSnapshot(c *job, addr string) {
 	replicaID := c.replicaID
 	if err := func() error {
 		if err := c.connect(addr); err != nil {
-			plog.Warningf("failed to get snapshot conn to %s", dn(shardID, replicaID))
+			plog.Warn("failed to get snapshot connection",
+				"target", dn(shardID, replicaID))
 			t.sendSnapshotNotification(shardID, replicaID, true)
 			close(c.failed)
 			t.metrics.snapshotCnnectionFailure()
@@ -172,18 +176,18 @@ func (t *Transport) processSnapshot(c *job, addr string) {
 		defer c.close()
 		breaker.Success()
 		if successes == 0 || consecFailures > 0 {
-			plog.Debugf("snapshot stream to %s (%s) established",
-				dn(shardID, replicaID), addr)
+			plog.Debug("snapshot stream established",
+				"target", dn(shardID, replicaID), "address", addr)
 			t.sysEvents.ConnectionEstablished(addr, true)
 		}
 		err := c.process()
 		if err != nil {
-			plog.Errorf("snapshot chunk processing failed: %v", err)
+			plog.Error("snapshot chunk processing failed", "error", err)
 		}
 		t.sendSnapshotNotification(shardID, replicaID, err != nil)
 		return err
 	}(); err != nil {
-		plog.Warningf("processSnapshot failed: %v", err)
+		plog.Warn("processSnapshot failed", "error", err)
 		breaker.Fail()
 		t.sysEvents.ConnectionFailed(addr, true)
 	}
@@ -197,8 +201,8 @@ func (t *Transport) sendSnapshotNotification(shardID uint64,
 		t.metrics.snapshotSendSuccess()
 	}
 	t.msgHandler.HandleSnapshotStatus(shardID, replicaID, rejected)
-	plog.Debugf("snapshot notification to %s added, reject %t",
-		dn(shardID, replicaID), rejected)
+	plog.Debug("snapshot notification added",
+		"target", dn(shardID, replicaID), "rejected", rejected)
 }
 
 func splitBySnapshotFile(msg pb.Message,

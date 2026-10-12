@@ -158,7 +158,7 @@ func (bw *BlockWriter) Close() error {
 	if len(bw.block) > 0 {
 		bw.total += uint64(len(bw.block)) + checksumSize
 		if err := bw.processNewBlock(bw.block, bw.h.Sum(nil)); err != nil {
-			plog.Errorf("onNewBlock failed %v", err)
+			plog.Error("onNewBlock failed", "error", err)
 			return err
 		}
 	}

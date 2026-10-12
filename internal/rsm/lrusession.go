@@ -72,7 +72,7 @@ func newLRUSession(size uint64) *lrusession {
 	rec.sessions.ShouldEvict = func(n int, k, v any) bool {
 		if uint64(n) > rec.size {
 			clientID, _ := k.(*RaftClientID)
-			plog.Warningf("session with client id %d evicted, overloaded", *clientID)
+			plog.Warn("session evicted, overloaded", "client_id", *clientID)
 			return true
 		}
 		return false

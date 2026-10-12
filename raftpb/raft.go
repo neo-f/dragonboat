@@ -16,6 +16,7 @@ package raftpb
 
 import (
 	"fmt"
+	"log/slog"
 	"math"
 	"strings"
 	"unsafe"
@@ -25,11 +26,10 @@ import (
 	"github.com/neo-f/dragonboat/v4/client"
 	"github.com/neo-f/dragonboat/v4/internal/settings"
 	"github.com/neo-f/dragonboat/v4/internal/vfs"
-	"github.com/neo-f/dragonboat/v4/logger"
 )
 
 var (
-	plog                = logger.GetLogger("raftpb")
+	plog                = slog.With("pkg", "raftpb")
 	panicOnSizeMismatch = settings.Soft.PanicOnSizeMismatch
 	emptyState          = State{}
 )
@@ -146,18 +146,20 @@ func NewBootstrapInfo(join bool,
 func (b *Bootstrap) Validate(nodes map[uint64]string,
 	join bool, smType StateMachineType) bool {
 	if b.Type != UnknownStateMachine && b.Type != smType {
-		plog.Errorf("recorded sm type %s, got %s", b.Type, smType)
+		plog.Error("inconsistent sm type",
+			"recorded_type", b.Type, "incoming_type", smType)
 		return false
 	}
 	if !b.Join && len(b.Addresses) == 0 {
 		panic("invalid non-join bootstrap record with 0 address")
 	}
 	if b.Join && len(nodes) > 0 {
-		plog.Errorf("restarting previously joined node, member list %v", nodes)
+		plog.Error("restarting previously joined node",
+			slog.Any("member_list", nodes))
 		return false
 	}
 	if join && len(b.Addresses) > 0 {
-		plog.Errorf("joining node when it is an initial member")
+		plog.Error("joining node when it is an initial member")
 		return false
 	}
 	valid := true
@@ -176,25 +178,27 @@ func (b *Bootstrap) Validate(nodes map[uint64]string,
 		}
 	}
 	if !valid {
-		plog.Errorf("inconsistent node list, bootstrap %v, incoming %v",
-			b.Addresses, nodes)
+		plog.Error("inconsistent node list",
+			slog.Any("bootstrap", b.Addresses), slog.Any("incoming", nodes))
 	}
 	return valid
 }
 
 func checkFileSize(path string, size uint64, fs vfs.IFS) {
-	var er func(format string, args ...any)
-	if panicOnSizeMismatch {
-		er = plog.Panicf
-	} else {
-		er = plog.Errorf
-	}
 	fi, err := fs.Stat(path)
 	if err != nil {
-		plog.Panicf("failed to access %s", path)
+		plog.Error("failed to access file", "path", path)
+		panic(fmt.Errorf("failed to access %s", path))
 	}
 	if size != uint64(fi.Size()) {
-		er("file %s size %d, expect %d", path, fi.Size(), size)
+		if panicOnSizeMismatch {
+			plog.Error("unexpected file size",
+				"path", path, "size", fi.Size(), "expected_size", size)
+			panic(fmt.Errorf("file %s size %d, expect %d", path, fi.Size(), size))
+		} else {
+			plog.Error("unexpected file size",
+				"path", path, "size", fi.Size(), "expected_size", size)
+		}
 	}
 }
 

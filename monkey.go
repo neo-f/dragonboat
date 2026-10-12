@@ -168,7 +168,7 @@ func (n *node) dumpRaftInfoToLog() {
 // PartitionNode puts the node into test partition mode. All connectivity to
 // the outside world should be stopped.
 func (nh *NodeHost) PartitionNode() {
-	plog.Infof("entered partition test mode")
+	plog.Info("entered partition test mode")
 	atomic.StoreInt32(&nh.partitioned, 1)
 }
 
@@ -176,7 +176,7 @@ func (nh *NodeHost) PartitionNode() {
 // change is going to be made on the local node. It is up to the local node it
 // self to repair/restore any other state.
 func (nh *NodeHost) RestorePartitionedNode() {
-	plog.Infof("restored from partition test mode")
+	plog.Info("restored from partition test mode")
 	atomic.StoreInt32(&nh.partitioned, 0)
 }
 

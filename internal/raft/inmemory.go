@@ -15,6 +15,8 @@
 package raft
 
 import (
+	"fmt"
+
 	"github.com/neo-f/dragonboat/v4/internal/server"
 	"github.com/neo-f/dragonboat/v4/internal/settings"
 	pb "github.com/neo-f/dragonboat/v4/raftpb"
@@ -52,8 +54,10 @@ func newInMemory(lastIndex uint64, rl *server.InMemRateLimiter) inMemory {
 func (im *inMemory) checkMarkerIndex() {
 	if len(im.entries) > 0 {
 		if im.entries[0].Index != im.markerIndex {
-			plog.Panicf("marker index %d, first index %d",
-				im.markerIndex, im.entries[0].Index)
+			plog.Error("marker index mismatch",
+				"marker_index", im.markerIndex, "first_index", im.entries[0].Index)
+			panic(fmt.Errorf("marker index %d, first index %d",
+				im.markerIndex, im.entries[0].Index))
 		}
 	}
 }
@@ -61,11 +65,14 @@ func (im *inMemory) checkMarkerIndex() {
 func (im *inMemory) getEntries(low uint64, high uint64) []pb.Entry {
 	upperBound := im.markerIndex + uint64(len(im.entries))
 	if low > high || low < im.markerIndex {
-		plog.Panicf("invalid low value %d, high %d, marker index %d",
-			low, high, im.markerIndex)
+		plog.Error("invalid low value",
+			"low", low, "high", high, "marker_index", im.markerIndex)
+		panic(fmt.Errorf("invalid low value %d, high %d, marker index %d",
+			low, high, im.markerIndex))
 	}
 	if high > upperBound {
-		plog.Panicf("invalid high value %d, upperBound %d", high, upperBound)
+		plog.Error("invalid high value", "high", high, "upper_bound", upperBound)
+		panic(fmt.Errorf("invalid high value %d, upperBound %d", high, upperBound))
 	}
 	return im.entries[low-im.markerIndex : high-im.markerIndex]
 }
@@ -87,7 +94,8 @@ func (im *inMemory) getLastIndex() (uint64, bool) {
 func (im *inMemory) getTerm(index uint64) (uint64, bool) {
 	if index > 0 && index == im.appliedToIndex {
 		if im.appliedToTerm == 0 {
-			plog.Panicf("im.appliedToTerm == 0, index %d", index)
+			plog.Error("im.appliedToTerm == 0", "index", index)
+			panic(fmt.Errorf("im.appliedToTerm == 0, index %d", index))
 		}
 		return im.appliedToTerm, true
 	}
@@ -167,7 +175,7 @@ func (im *inMemory) savedSnapshotTo(index uint64) {
 	if idx, ok := im.getSnapshotIndex(); ok && idx == index {
 		im.snapshot = nil
 	} else if ok && idx != index {
-		plog.Warningf("snapshot index does not match")
+		plog.Warn("snapshot index does not match")
 	}
 }
 

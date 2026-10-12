@@ -5,6 +5,7 @@ This fork upgrades all dependencies to their latest versions and modernizes the 
 ### Breaking changes
 
 - Pebble has been upgraded to v2.1.7 (github.com/cockroachdb/pebble/v2). Pebble v2 can not open data directories created by the 2022 version of pebble used previously (format major version 1 is no longer supported). Existing KV based LogDB data must be migrated first - either open it once with a pebble v1.x based dragonboat to upgrade its format major version, or rebuild it by re-replicating from the cluster. tan based LogDB is not affected.
+- The logger package has been removed, all logging now uses log/slog directly. Each component logs through a plain package level slog.With("pkg", ...) logger and all call sites use structured attributes instead of format strings; the previous ILogger/Factory/SetLoggerFactory extension point is gone - applications customize logging by installing an slog.Handler via slog.SetDefault. Note that package level loggers bind the backend at package initialization time, so the handler must be installed before dragonboat packages initialize (slog.SetDefault inside main() runs too late for them); with the default handler left untouched everything works unchanged. Log output format is determined by the handler in use.
 
 ### Upgrades
 

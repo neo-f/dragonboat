@@ -15,6 +15,7 @@
 package rsm
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -40,7 +41,8 @@ func NewFileCollection() *Files {
 func (fc *Files) AddFile(fileID uint64,
 	path string, metadata []byte) {
 	if _, ok := fc.idmap[fileID]; ok {
-		plog.Panicf("trying to add file %d again", fileID)
+		plog.Error("trying to add file again", "file_id", fileID)
+		panic(fmt.Errorf("trying to add file %d again", fileID))
 	}
 	f := &pb.SnapshotFile{
 		Filepath: path,
@@ -76,11 +78,12 @@ func (fc *Files) PrepareFiles(tmpdir string,
 			return nil, err
 		}
 		if fi.IsDir() {
-			plog.Panicf("%s is a dir", fp)
+			plog.Error("path is a dir", "path", fp)
+			panic(fmt.Errorf("%s is a dir", fp))
 		}
 		if fi.Size() == 0 {
-			plog.Panicf("empty file found, id %d",
-				file.FileId)
+			plog.Error("empty file found", "file_id", file.FileId)
+			panic(fmt.Errorf("empty file found, id %d", file.FileId))
 		}
 		file.Filepath = filepath.Join(finaldir, fn)
 		file.FileSize = uint64(fi.Size())

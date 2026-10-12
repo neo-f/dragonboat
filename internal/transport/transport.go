@@ -42,6 +42,8 @@ package transport
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -58,7 +60,6 @@ import (
 	"github.com/neo-f/dragonboat/v4/internal/server"
 	"github.com/neo-f/dragonboat/v4/internal/settings"
 	"github.com/neo-f/dragonboat/v4/internal/vfs"
-	"github.com/neo-f/dragonboat/v4/logger"
 	ct "github.com/neo-f/dragonboat/v4/plugin/chan"
 	"github.com/neo-f/dragonboat/v4/raftio"
 	pb "github.com/neo-f/dragonboat/v4/raftpb"
@@ -73,7 +74,7 @@ var (
 )
 
 var (
-	plog                = logger.GetLogger("transport")
+	plog                = slog.With("pkg", "transport")
 	sendQueueLen        = settings.Soft.SendQueueLength
 	dialTimeoutSecond   = settings.Soft.GetConnectedTimeoutSecond
 	idleTimeout         = time.Minute
@@ -235,11 +236,11 @@ func NewTransport(nhConfig config.NodeHostConfig,
 	}
 	t.metrics = newTransportMetrics(true, msgConn, ssCount)
 
-	plog.Infof("transport type: %s", t.trans.Name())
+	plog.Info("transport type", "name", t.trans.Name())
 	if err := t.trans.Start(); err != nil {
-		plog.Errorf("transport failed to start %v", err)
+		plog.Error("transport failed to start", "error", err)
 		if cerr := t.trans.Close(); cerr != nil {
-			plog.Errorf("failed to close the transport module %v", cerr)
+			plog.Error("failed to close the transport module", "error", cerr)
 		}
 		return nil, err
 	}
@@ -305,13 +306,13 @@ func (t *Transport) GetCircuitBreaker(key string) *circuit.Breaker {
 func (t *Transport) handleRequest(req pb.MessageBatch) {
 	did := t.nhConfig.GetDeploymentID()
 	if req.DeploymentId != did {
-		plog.Warningf("deployment id does not match %d vs %d, message dropped",
-			req.DeploymentId, did)
+		plog.Warn("deployment id does not match, message dropped",
+			"message_deployment_id", req.DeploymentId, "deployment_id", did)
 		return
 	}
 	if req.BinVer != raftio.TransportBinVersion {
-		plog.Warningf("binary compatibility version not match %d vs %d",
-			req.BinVer, raftio.TransportBinVersion)
+		plog.Warn("binary compatibility version not match",
+			"message_bin_ver", req.BinVer, "bin_ver", raftio.TransportBinVersion)
 		return
 	}
 	addr := req.SourceAddress
@@ -333,7 +334,8 @@ func (t *Transport) snapshotReceived(shardID uint64,
 }
 
 func (t *Transport) notifyUnreachable(addr string, affected nodeMap) {
-	plog.Warningf("%s became unreachable, affected %d nodes", addr, len(affected))
+	plog.Warn("target became unreachable",
+		"address", addr, "affected_count", len(affected))
 	for n := range affected {
 		t.msgHandler.HandleUnreachable(n.ShardID, n.ReplicaID)
 	}
@@ -415,23 +417,23 @@ func (t *Transport) connectAndProcess(remoteHost string,
 	successes := breaker.Successes()
 	consecFailures := breaker.ConsecFailures()
 	if err := func() error {
-		plog.Debugf("%s is trying to connect to %s", t.sourceID, remoteHost)
+		plog.Debug("trying to connect", "source", t.sourceID, "target", remoteHost)
 		conn, err := t.trans.GetConnection(t.ctx, remoteHost)
 		if err != nil {
-			plog.Errorf("Nodehost %s failed to get a connection to %s, %v",
-				t.sourceID, remoteHost, err)
+			plog.Error("failed to get a connection",
+				"source", t.sourceID, "target", remoteHost, "error", err)
 			return err
 		}
 		defer conn.Close()
 		breaker.Success()
 		if successes == 0 || consecFailures > 0 {
-			plog.Debugf("message streaming to %s established", remoteHost)
+			plog.Debug("message streaming established", "target", remoteHost)
 			t.sysEvents.ConnectionEstablished(remoteHost, false)
 		}
 		return t.processMessages(remoteHost, sq, conn, affected)
 	}(); err != nil {
-		plog.Warningf("breaker %s to %s failed, connect and process failed: %s",
-			t.sourceID, remoteHost, err.Error())
+		plog.Warn("breaker failed, connect and process failed",
+			"source", t.sourceID, "target", remoteHost, "error", err)
 		breaker.Fail()
 		t.metrics.messageConnectionFailure()
 		t.sysEvents.ConnectionFailed(remoteHost, false)
@@ -488,15 +490,17 @@ func (t *Transport) processMessages(remoteHost string,
 				batch.Requests = requests[:len(requests)-1]
 			}
 			if err := t.sendMessageBatch(conn, batch); err != nil {
-				plog.Errorf("send batch failed, target %s (%v), %d",
-					remoteHost, err, len(batch.Requests))
+				plog.Error("send batch failed",
+					"target", remoteHost, "error", err,
+					"batch_size", len(batch.Requests))
 				return err
 			}
 			if twoBatch {
 				batch.Requests = []pb.Message{requests[len(requests)-1]}
 				if err := t.sendMessageBatch(conn, batch); err != nil {
-					plog.Errorf("send batch failed, taret node %s (%v), %d",
-						remoteHost, err, len(batch.Requests))
+					plog.Error("send batch failed",
+						"target", remoteHost, "error", err,
+						"batch_size", len(batch.Requests))
 					return err
 				}
 			}
@@ -523,7 +527,9 @@ func (t *Transport) sendMessageBatch(conn raftio.IConnection,
 	if f := t.preSendBatch.Load(); f != nil {
 		fn, ok := f.(SendMessageBatchFunc)
 		if !ok {
-			plog.Panicf("unexpected preSendBatch hook type %T", f)
+			plog.Error("unexpected preSendBatch hook type",
+				"type", fmt.Sprintf("%T", f))
+			panic(fmt.Errorf("unexpected preSendBatch hook type %T", f))
 		}
 		updated, shouldSend := fn(batch)
 		if !shouldSend {

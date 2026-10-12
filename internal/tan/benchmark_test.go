@@ -15,10 +15,11 @@
 package tan
 
 import (
+	"log/slog"
+	"os"
 	"testing"
 
 	"github.com/neo-f/dragonboat/v4/internal/vfs"
-	"github.com/neo-f/dragonboat/v4/logger"
 	pb "github.com/neo-f/dragonboat/v4/raftpb"
 	"github.com/stretchr/testify/require"
 )
@@ -27,7 +28,8 @@ var benchmarkTestDirname = "tan_benchmark_dir"
 
 func benchmarkWrite(b *testing.B, sz int) {
 	b.Helper()
-	logger.GetLogger("tan").SetLevel(logger.WARNING)
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr,
+		&slog.HandlerOptions{Level: slog.LevelWarn})))
 	b.ReportAllocs()
 	fs := vfs.GetTestFS()
 	opts := &Options{

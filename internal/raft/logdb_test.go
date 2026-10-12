@@ -15,6 +15,7 @@
 package raft
 
 import (
+	"fmt"
 	"math"
 
 	pb "github.com/neo-f/dragonboat/v4/raftpb"
@@ -75,8 +76,10 @@ func (db *TestLogDB) getSnapshot(index uint64,
 
 	offset := db.markerIndex
 	if index > db.lastIndex() {
-		plog.Panicf("snapshot %d is out of bound lastindex(%d)",
-			index, db.lastIndex())
+		plog.Error("snapshot is out of bound",
+			"index", index, "last_index", db.lastIndex())
+		panic(fmt.Errorf("snapshot %d is out of bound lastindex(%d)",
+			index, db.lastIndex()))
 	}
 	ss := pb.Snapshot{
 		Index: index,
@@ -133,8 +136,10 @@ func (db *TestLogDB) Append(entries []pb.Entry) error {
 	if uint64(len(db.entries)+1) > offset {
 		db.entries = db.entries[:offset-1]
 	} else if uint64(len(db.entries)+1) < offset {
-		plog.Panicf("found a hole last index %d, first incoming index %d",
-			db.lastIndex(), entries[0].Index)
+		plog.Error("found a hole",
+			"last_index", db.lastIndex(), "first_incoming_index", entries[0].Index)
+		panic(fmt.Errorf("found a hole last index %d, first incoming index %d",
+			db.lastIndex(), entries[0].Index))
 	}
 	db.entries = append(db.entries, entries...)
 	return nil

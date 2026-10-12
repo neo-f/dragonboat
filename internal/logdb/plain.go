@@ -15,6 +15,8 @@
 package logdb
 
 import (
+	"fmt"
+
 	"github.com/neo-f/dragonboat/v4/internal/logdb/kv"
 	"github.com/neo-f/dragonboat/v4/raftio"
 	pb "github.com/neo-f/dragonboat/v4/raftpb"
@@ -138,7 +140,9 @@ func (pe *plainEntries) getRange(shardID uint64,
 		return 0, 0, err
 	}
 	if firstIndex == 0 && maxIndex != 0 {
-		plog.Panicf("first index %d, max index %d", firstIndex, maxIndex)
+		plog.Error("first index is 0",
+			"first_index", firstIndex, "max_index", maxIndex)
+		panic(fmt.Errorf("first index %d, max index %d", firstIndex, maxIndex))
 	}
 	if firstIndex > 0 {
 		length = maxIndex - firstIndex + 1

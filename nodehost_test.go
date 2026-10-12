@@ -2640,7 +2640,7 @@ func TestOnDiskSMCanStreamSnapshot(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			_, err := nh2.SyncPropose(ctx, session, []byte("test-data"))
 			cancel()
-			plog.Infof("nh2 proposal result: %v", err)
+			plog.Info("nh2 proposal result", "error", err)
 			if err != nil {
 				time.Sleep(100 * time.Millisecond)
 				continue
@@ -2816,7 +2816,7 @@ func TestRegularStateMachineDoesNotAllowConucrrentUpdate(t *testing.T) {
 				session := nh.GetNoOPSession(1)
 				_, err := nh.SyncPropose(ctx, session, []byte("test"))
 				if err != nil {
-					plog.Infof("failed to make proposal %v\n", err)
+					plog.Info("failed to make proposal", "error", err)
 				}
 				cancel()
 				if atomic.LoadUint32(&failed) == 1 {
@@ -3038,7 +3038,7 @@ func TestRateLimitCanUseFollowerFeedback(t *testing.T) {
 		n2.SetSleepTime(0)
 		require.True(t, makeTestProposal(nh1, 2000),
 			"failed to make proposal again")
-		plog.Infof("rate limit lifted, all good")
+		plog.Info("rate limit lifted, all good")
 	}
 	rateLimitedTwoNodeHostTest(t, tf, fs)
 }
@@ -3242,7 +3242,7 @@ func TestSnapshotIndexWillPanicOnRegularRequestResult(t *testing.T) {
 
 			v := <-rs.ResultC()
 			require.Panics(t, func() {
-				plog.Infof("%d", v.SnapshotIndex())
+				plog.Info("snapshot index", "index", v.SnapshotIndex())
 			})
 		},
 	}
@@ -5193,7 +5193,7 @@ func TestProposeOnClosedNode(t *testing.T) {
 			cs := nh.GetNoOPSession(1)
 			_, err = u.Propose(cs, nil, time.Second)
 			require.Error(t, err, "propose on closed node didn't cause error")
-			plog.Infof("%v returned from closed node", err)
+			plog.Info("returned from closed node", "error", err)
 		},
 	}
 	runNodeHostTest(t, to, fs)
@@ -5210,7 +5210,7 @@ func TestReadIndexOnClosedNode(t *testing.T) {
 			require.NoError(t, err, "failed to stop node, %v", err)
 			_, err = u.ReadIndex(time.Second)
 			require.Error(t, err, "ReadIndex on closed node didn't cause error")
-			plog.Infof("%v returned from closed node", err)
+			plog.Info("returned from closed node", "error", err)
 		},
 	}
 	runNodeHostTest(t, to, fs)
@@ -5252,7 +5252,7 @@ func TestBootstrapInfoIsValidated(t *testing.T) {
 type stressRSM struct{}
 
 func (s *stressRSM) Update(sm.Entry) (sm.Result, error) {
-	plog.Infof("updated")
+	plog.Info("updated")
 	return sm.Result{}, nil
 }
 
@@ -5270,7 +5270,7 @@ func (s *stressRSM) SaveSnapshot(w io.Writer,
 
 func (s *stressRSM) RecoverFromSnapshot(r io.Reader,
 	f []sm.SnapshotFile, c <-chan struct{}) error {
-	plog.Infof("RecoverFromSnapshot called")
+	plog.Info("RecoverFromSnapshot called")
 	data := make([]byte, settings.SnapshotChunkSize*3)
 	n, err := io.ReadFull(r, data)
 	if uint64(n) != settings.SnapshotChunkSize*3 {
@@ -5355,7 +5355,7 @@ func TestSlowTestStressedSnapshotWorker(t *testing.T) {
 			}
 		}
 	}
-	plog.Infof("all nodes added")
+	plog.Info("all nodes added")
 
 	nhc2 := config.NodeHostConfig{
 		WALDir:         nh2dir,

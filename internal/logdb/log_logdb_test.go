@@ -161,7 +161,7 @@ func TestRLLTAppend(t *testing.T) {
 		raftLog := raft.NewLog(stable)
 
 		fi, _ := stable.GetRange()
-		plog.Infof("stable first index: %d", fi)
+		plog.Info("stable first index", "first_index", fi)
 		require.NoError(t, raftLog.Append(tt.ents))
 		index := raftLog.LastIndex()
 		require.Equal(t, tt.windex, index,

@@ -915,7 +915,7 @@ func TestRemoveEntriesTo(t *testing.T) {
 		sdb, ok := db.(*ShardedDB)
 		require.True(t, ok)
 		name := sdb.Name()
-		plog.Infof("name: %s", name)
+		plog.Info("db name", "name", name)
 		skipSizeCheck = strings.Contains(name, "leveldb")
 		failed, err := sdb.SelfCheckFailed()
 		require.False(t, failed)
@@ -948,7 +948,7 @@ func TestRemoveEntriesTo(t *testing.T) {
 			if count == 0 {
 				time.Sleep(10 * time.Millisecond)
 			} else {
-				plog.Infof("count: %d, done", count)
+				plog.Info("compaction done", "count", count)
 				break
 			}
 			if i == 999 {
@@ -971,7 +971,7 @@ func TestRemoveEntriesTo(t *testing.T) {
 	if !skipSizeCheck {
 		sz, err := getDirSize(testDir, false, fs)
 		require.NoError(t, err)
-		plog.Infof("sz: %d", sz)
+		plog.Info("dir size", "size", sz)
 		require.LessOrEqual(t, sz, int64(1024*1024))
 	}
 }

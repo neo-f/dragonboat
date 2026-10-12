@@ -18,12 +18,13 @@
 package raft
 
 import (
+	"log/slog"
+
 	"github.com/neo-f/dragonboat/v4/internal/server"
-	"github.com/neo-f/dragonboat/v4/logger"
 )
 
 var (
-	mplog = logger.GetLogger("raft-mt")
+	mplog = slog.With("pkg", "raft-mt")
 )
 
 // DumpRaftInfoToLog prints the raft state to log for debugging purposes.
@@ -52,15 +53,16 @@ func (r *raft) dumpRaftInfoToLog(addrs map[uint64]string) {
 	} else {
 		flag = "###"
 	}
-	mplog.Infof("%s Raft node %s, %d remote nodes",
-		flag, r.describe(), len(r.remotes))
+	mplog.Info("Raft node",
+		"flag", flag, "node", r.describe(), "remote_count", len(r.remotes))
 	for id, rp := range r.remotes {
 		if v, ok := addrs[id]; !ok {
-			mplog.Infof("---> node %d is missing", id)
+			mplog.Info("node is missing", "replica_id", id)
 		} else {
-			mplog.Infof(" %s,addr:%s,match:%d,next:%d,state:%s,paused:%v,ra:%v,ps:%d",
-				ReplicaID(id), v, rp.match, rp.next, rp.state, rp.isPaused(),
-				rp.isActive(), rp.snapshotIndex)
+			mplog.Info("remote node",
+				"replica_id", ReplicaID(id), "addr", v, "match", rp.match,
+				"next", rp.next, "state", rp.state.String(), "paused", rp.isPaused(),
+				"active", rp.isActive(), "snapshot_index", rp.snapshotIndex)
 		}
 	}
 }

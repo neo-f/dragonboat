@@ -107,8 +107,11 @@ func NewChunk(onReceive func(pb.MessageBatch),
 func (c *Chunk) Add(chunk pb.Chunk) bool {
 	if chunk.DeploymentId != c.did ||
 		chunk.BinVer != raftio.TransportBinVersion {
-		plog.Errorf("invalid did or binver, %d, %d, %d, %d",
-			chunk.DeploymentId, c.did, chunk.BinVer, raftio.TransportBinVersion)
+		plog.Error("invalid did or binver",
+			"chunk_deployment_id", chunk.DeploymentId,
+			"deployment_id", c.did,
+			"chunk_bin_ver", chunk.BinVer,
+			"bin_ver", raftio.TransportBinVersion)
 		return false
 	}
 	key := chunkKey(chunk)
@@ -199,12 +202,12 @@ func (c *Chunk) record(chunk pb.Chunk) *tracked {
 	key := chunkKey(chunk)
 	td := c.tracked[key]
 	if chunk.ChunkId == 0 {
-		plog.Debugf("first chunk of %s received", c.ssid(chunk))
+		plog.Debug("first chunk received", "snapshot", c.ssid(chunk))
 		if td != nil {
-			plog.Warningf("removing unclaimed chunks %s", key)
+			plog.Warn("removing unclaimed chunks", "chunk_key", key)
 			c.removeTempDir(td.first)
 		} else if c.full() {
-			plog.Errorf("max slot count reached, dropped a chunk %s", key)
+			plog.Error("max slot count reached, dropped a chunk", "chunk_key", key)
 			return nil
 		}
 		validator := rsm.NewSnapshotValidator()
@@ -222,12 +225,13 @@ func (c *Chunk) record(chunk pb.Chunk) *tracked {
 		c.tracked[key] = td
 	} else {
 		if td == nil {
-			plog.Errorf("not tracked chunk %s ignored, id %d", key, chunk.ChunkId)
+			plog.Error("not tracked chunk ignored",
+				"chunk_key", key, "chunk_id", chunk.ChunkId)
 			return nil
 		}
 		if td.next != chunk.ChunkId {
-			plog.Errorf("out of order, %s, want %d, got %d",
-				key, td.next, chunk.ChunkId)
+			plog.Error("out of order chunk",
+				"chunk_key", key, "want", td.next, "got", chunk.ChunkId)
 			return nil
 		}
 		from := chunk.From
@@ -235,7 +239,8 @@ func (c *Chunk) record(chunk pb.Chunk) *tracked {
 		if want != from {
 			from := chunk.From
 			want := td.first.From
-			plog.Errorf("ignored %s, from %d, want %d", key, from, want)
+			plog.Error("chunk ignored",
+				"chunk_key", key, "from", from, "want", want)
 			return nil
 		}
 		td.next = chunk.ChunkId + 1
@@ -255,7 +260,7 @@ func (c *Chunk) addLocked(chunk pb.Chunk) bool {
 	key := chunkKey(chunk)
 	td := c.record(chunk)
 	if td == nil {
-		plog.Warningf("ignored a chunk belongs to %s", key)
+		plog.Warn("ignored a chunk", "chunk_key", key)
 		return false
 	}
 	removed, err := c.nodeRemoved(chunk)
@@ -264,12 +269,12 @@ func (c *Chunk) addLocked(chunk pb.Chunk) bool {
 	}
 	if removed {
 		c.removeTempDir(chunk)
-		plog.Warningf("node removed, ignored chunk %s", key)
+		plog.Warn("node removed, ignored chunk", "chunk_key", key)
 		return false
 	}
 	if c.shouldValidate(chunk) {
 		if !td.validator.AddChunk(chunk.Data, chunk.ChunkId) {
-			plog.Warningf("ignored a invalid chunk %s", key)
+			plog.Warn("ignored an invalid chunk", "chunk_key", key)
 			return false
 		}
 	}
@@ -279,11 +284,11 @@ func (c *Chunk) addLocked(chunk pb.Chunk) bool {
 		panicNow(err)
 	}
 	if chunk.IsLastChunk() {
-		plog.Debugf("last chunk %s received", key)
+		plog.Debug("last chunk received", "chunk_key", key)
 		defer c.reset(key)
 		if c.validate {
 			if !td.validator.Validate() {
-				plog.Warningf("dropped an invalid snapshot %s", key)
+				plog.Warn("dropped an invalid snapshot", "chunk_key", key)
 				c.removeTempDir(chunk)
 				return false
 			}
@@ -291,13 +296,15 @@ func (c *Chunk) addLocked(chunk pb.Chunk) bool {
 		if err := c.finalize(chunk, td); err != nil {
 			c.removeTempDir(chunk)
 			if !errors.Is(err, ErrSnapshotOutOfDate) {
-				plog.Panicf("%s failed when finalizing, %v", key, err)
+				plog.Error("failed when finalizing",
+					"chunk_key", key, "error", err)
+				panic(fmt.Errorf("%v failed when finalizing, %w", key, err))
 			}
 			return false
 		}
 		snapshotMessage := c.toMessage(td.first, td.files)
-		plog.Debugf("%s received from %d, term %d",
-			c.ssid(chunk), chunk.From, chunk.Term)
+		plog.Debug("snapshot received",
+			"snapshot", c.ssid(chunk), "from", chunk.From, "term", chunk.Term)
 		c.onReceive(snapshotMessage)
 		c.confirm(chunk.ShardID, chunk.ReplicaID, chunk.From)
 	}
@@ -409,6 +416,6 @@ func (c *Chunk) ssid(chunk pb.Chunk) string {
 }
 
 func panicNow(err error) {
-	plog.Panicf("%+v", err)
+	plog.Error("unrecoverable error", "error", fmt.Sprintf("%+v", err))
 	panic(err)
 }

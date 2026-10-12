@@ -21,6 +21,7 @@ package tan
 import (
 	"bytes"
 	"io"
+	"log/slog"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -28,13 +29,12 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/lni/goutils/syncutil"
-	"github.com/neo-f/dragonboat/v4/logger"
 	"github.com/neo-f/dragonboat/v4/raftio"
 	pb "github.com/neo-f/dragonboat/v4/raftpb"
 )
 
 var (
-	plog = logger.GetLogger("tan")
+	plog = slog.With("pkg", "tan")
 )
 
 const (

@@ -17,6 +17,7 @@ package server
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -29,13 +30,12 @@ import (
 	"github.com/neo-f/dragonboat/v4/internal/settings"
 	"github.com/neo-f/dragonboat/v4/internal/utils"
 	"github.com/neo-f/dragonboat/v4/internal/vfs"
-	"github.com/neo-f/dragonboat/v4/logger"
 	"github.com/neo-f/dragonboat/v4/raftio"
 	"github.com/neo-f/dragonboat/v4/raftpb"
 )
 
 var (
-	plog = logger.GetLogger("server")
+	plog = slog.With("pkg", "server")
 	// ErrNodeHostIDChanged indicates that NodeHostID changed.
 	ErrNodeHostIDChanged = errors.New("NodeHostID changed")
 	// ErrHardSettingChanged indicates that one or more of the hard settings
@@ -425,7 +425,7 @@ func (env *Env) check(cfg config.NodeHostConfig,
 				binVer == raftio.PlainLogDBBinVersion {
 				return ErrLogDBBrokenChange
 			}
-			plog.Errorf("logdb binary ver changed, %d vs %d", s.BinVer, binVer)
+			plog.Error("logdb binary ver changed", "stored_version", s.BinVer, "current_version", binVer)
 			return ErrIncompatibleData
 		}
 		if s.HardHash != 0 {

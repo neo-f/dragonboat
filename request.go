@@ -18,6 +18,7 @@ import (
 	"crypto/sha512"
 	"encoding/binary"
 	"fmt"
+	"log/slog"
 	"math/rand/v2"
 	"os"
 	"sync"
@@ -32,7 +33,6 @@ import (
 	"github.com/neo-f/dragonboat/v4/internal/fileutil"
 	"github.com/neo-f/dragonboat/v4/internal/rsm"
 	"github.com/neo-f/dragonboat/v4/internal/settings"
-	"github.com/neo-f/dragonboat/v4/logger"
 	pb "github.com/neo-f/dragonboat/v4/raftpb"
 	sm "github.com/neo-f/dragonboat/v4/statemachine"
 )
@@ -43,7 +43,7 @@ var (
 )
 
 var (
-	plog = logger.GetLogger("dragonboat")
+	plog = slog.With("pkg", "dragonboat")
 )
 
 var (
@@ -186,7 +186,8 @@ func (rr *RequestResult) Dropped() bool {
 // RequestResult instances not related to snapshots will cause panic.
 func (rr *RequestResult) SnapshotIndex() uint64 {
 	if !rr.snapshotResult {
-		plog.Panicf("not a snapshot request result")
+		plog.Error("not a snapshot request result")
+		panic(errors.New("not a snapshot request result"))
 	}
 	return rr.result.Value
 }
@@ -241,7 +242,8 @@ type logicalClock struct {
 
 func newLogicalClock() logicalClock {
 	if defaultGCTick == 0 || defaultGCTick > 3 {
-		plog.Panicf("invalid defaultGCTick %d", defaultGCTick)
+		plog.Error("invalid defaultGCTick", "gc_tick", defaultGCTick)
+		panic(fmt.Errorf("invalid defaultGCTick %v", defaultGCTick))
 	}
 	return logicalClock{gcTick: defaultGCTick}
 }
@@ -342,7 +344,8 @@ func (r *RequestState) ResultC() chan RequestResult {
 		return r.CompletedC
 	}
 	if r.committedC == nil {
-		plog.Panicf("committedC is nil")
+		plog.Error("committedC is nil")
+		panic(errors.New("committedC is nil"))
 	}
 	if r.aggrC != nil {
 		return r.aggrC
@@ -352,7 +355,8 @@ func (r *RequestState) ResultC() chan RequestResult {
 		select {
 		case cn := <-r.committedC:
 			if cn.code != requestCommitted {
-				plog.Panicf("unexpected requestResult, %s", cn.code)
+				plog.Error("unexpected requestResult", "code", cn.code)
+				panic(fmt.Errorf("unexpected requestResult, %v", cn.code))
 			}
 			r.aggrC <- cn
 		default:
@@ -369,18 +373,22 @@ func (r *RequestState) ResultC() chan RequestResult {
 		select {
 		case cn := <-r.committedC:
 			if cn.code != requestCommitted {
-				plog.Panicf("unexpected requestResult, %s", cn.code)
+				plog.Error("unexpected requestResult", "code", cn.code)
+				panic(fmt.Errorf("unexpected requestResult, %v", cn.code))
 			}
 			r.aggrC <- cn
 			cc := <-r.CompletedC
 			if cc.Dropped() {
-				plog.Panicf("committed entry dropped")
+				plog.Error("committed entry dropped")
+				panic(errors.New("committed entry dropped"))
 			}
 			if cc.Aborted() {
-				plog.Panicf("committed entry aborted")
+				plog.Error("committed entry aborted")
+				panic(errors.New("committed entry aborted"))
 			}
 			if cc.code == requestCommitted {
-				plog.Panicf("entry committed notified twice")
+				plog.Error("entry committed notified twice")
+				panic(errors.New("entry committed notified twice"))
 			}
 			r.aggrC <- cc
 		case cc := <-r.CompletedC:
@@ -389,17 +397,20 @@ func (r *RequestState) ResultC() chan RequestResult {
 				// easier to implement for the input
 				// {true, true, requestAborted, true}
 				tryBridgeCommittedC()
-				plog.Panicf("requestAborted sent to CompletedC")
+				plog.Error("requestAborted sent to CompletedC")
+				panic(errors.New("requestAborted sent to CompletedC"))
 			}
 			if cc.code == requestCommitted {
 				tryBridgeCommittedC()
-				plog.Panicf("requestCommitted sent to CompletedC")
+				plog.Error("requestCommitted sent to CompletedC")
+				panic(errors.New("requestCommitted sent to CompletedC"))
 			}
 			select {
 			case ccn := <-r.committedC:
 				if cc.Dropped() {
 					r.aggrC <- ccn
-					plog.Panicf("applied entry dropped")
+					plog.Error("applied entry dropped")
+					panic(errors.New("applied entry dropped"))
 				}
 				r.aggrC <- ccn
 			default:
@@ -412,15 +423,18 @@ func (r *RequestState) ResultC() chan RequestResult {
 
 func (r *RequestState) committed() {
 	if !r.notifyCommit {
-		plog.Panicf("notify commit not allowed")
+		plog.Error("notify commit not allowed")
+		panic(errors.New("notify commit not allowed"))
 	}
 	if r.committedC == nil {
-		plog.Panicf("committedC is nil")
+		plog.Error("committedC is nil")
+		panic(errors.New("committedC is nil"))
 	}
 	select {
 	case r.committedC <- RequestResult{code: requestCommitted}:
 	default:
-		plog.Panicf("RequestState.committedC is full")
+		plog.Error("RequestState.committedC is full")
+		panic(errors.New("RequestState.committedC is full"))
 	}
 }
 
@@ -441,7 +455,8 @@ func (r *RequestState) notify(result RequestResult) {
 	case r.CompletedC <- result:
 		r.readyToRelease.set()
 	default:
-		plog.Panicf("RequestState.CompletedC is full")
+		plog.Error("RequestState.CompletedC is full")
+		panic(errors.New("RequestState.CompletedC is full"))
 	}
 }
 
@@ -471,7 +486,8 @@ func (r *RequestState) Release() {
 
 func (r *RequestState) reuse(notifyCommit bool) {
 	if r.aggrC != nil {
-		plog.Panicf("aggrC not nil")
+		plog.Error("aggrC not nil")
+		panic(errors.New("aggrC not nil"))
 	}
 	if len(r.CompletedC) > 0 || r.CompletedC == nil {
 		r.CompletedC = make(chan RequestResult, 1)
@@ -487,13 +503,16 @@ func (r *RequestState) reuse(notifyCommit bool) {
 
 func (r *RequestState) mustBeReadyForLocalRead() {
 	if r.node == nil {
-		plog.Panicf("invalid rs")
+		plog.Error("invalid rs")
+		panic(errors.New("invalid rs"))
 	}
 	if !r.node.initialized() {
-		plog.Panicf("%s not initialized", r.node.id())
+		plog.Error("not initialized", "id", r.node.id())
+		panic(fmt.Errorf("%v not initialized", r.node.id()))
 	}
 	if !r.readyToRead.ready() {
-		plog.Panicf("not ready for local read")
+		plog.Error("not ready for local read")
+		panic(errors.New("not ready for local read"))
 	}
 }
 
@@ -675,7 +694,8 @@ func (p *pendingSnapshot) gc() {
 func (p *pendingSnapshot) apply(key uint64,
 	ignored bool, aborted bool, index uint64) {
 	if ignored && aborted {
-		plog.Panicf("ignored && aborted")
+		plog.Error("ignored && aborted")
+		panic(errors.New("ignored && aborted"))
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -901,7 +921,8 @@ func (p *pendingReadIndex) add(sys pb.SystemCtx, reqs []*RequestState) {
 		return
 	}
 	if _, ok := p.batches[sys]; ok {
-		plog.Panicf("same system ctx added again %v", sys)
+		plog.Error("same system ctx added again", slog.Any("ctx", sys))
+		panic(fmt.Errorf("same system ctx added again %v", sys))
 	} else {
 		rs := make([]*RequestState, len(reqs))
 		copy(rs, reqs)
@@ -1109,8 +1130,8 @@ func (p *proposalShard) propose(session *client.Session,
 
 	added, stopped := p.proposals.add(entry)
 	if stopped {
-		plog.Warningf("%s dropped proposal, shard stopped",
-			dn(p.cfg.ShardID, p.cfg.ReplicaID))
+		plog.Warn("dropped proposal, shard stopped",
+			"id", dn(p.cfg.ShardID, p.cfg.ReplicaID))
 		p.mu.Lock()
 		delete(p.pending, entry.Key)
 		p.mu.Unlock()
@@ -1120,8 +1141,8 @@ func (p *proposalShard) propose(session *client.Session,
 		p.mu.Lock()
 		delete(p.pending, entry.Key)
 		p.mu.Unlock()
-		plog.Debugf("%s dropped proposal, overloaded",
-			dn(p.cfg.ShardID, p.cfg.ReplicaID))
+		plog.Debug("dropped proposal, overloaded",
+			"id", dn(p.cfg.ShardID, p.cfg.ReplicaID))
 		return nil, ErrSystemBusy
 	}
 	return req, nil

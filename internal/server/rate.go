@@ -78,7 +78,7 @@ func (r *RateLimiter) RateLimited() bool {
 	}
 	v := r.Get()
 	if v > r.maxSize {
-		plog.Infof("rate limited, v: %d, maxSize %d", v, r.maxSize)
+		plog.Info("rate limited", "value", v, "max_size", r.maxSize)
 		return true
 	}
 	return false

@@ -20,6 +20,8 @@ package tan
 
 import (
 	"cmp"
+	"fmt"
+	"log/slog"
 	"slices"
 
 	"github.com/cockroachdb/errors"
@@ -54,7 +56,7 @@ func open(name string, dirname string, opts *Options) (*db, error) {
 	currentName := makeFilename(opts.FS, dirname, fileTypeCurrent, 0)
 	if _, err := opts.FS.Stat(currentName); oserror.IsNotExist(err) {
 		// Create the DB if it did not already exist.
-		plog.Infof("%s creating a new tan db", d.id())
+		plog.Info("creating a new tan db", "id", d.id())
 		if err := d.mu.versions.create(dirname, opts, d.dataDir, &d.mu.Mutex); err != nil {
 			return nil, err
 		}
@@ -62,7 +64,7 @@ func open(name string, dirname string, opts *Options) (*db, error) {
 		return nil, errors.Wrapf(err, "tan: database %q", dirname)
 	} else {
 		// Load the version set.
-		plog.Infof("%s loading an existing tan db", d.id())
+		plog.Info("loading an existing tan db", "id", d.id())
 		if err := d.mu.versions.load(dirname, opts, &d.mu.Mutex); err != nil {
 			return nil, err
 		}
@@ -75,7 +77,7 @@ func open(name string, dirname string, opts *Options) (*db, error) {
 	if err != nil {
 		return nil, err
 	}
-	plog.Infof("%s on disk files %v", d.id(), ls)
+	plog.Info("on disk files", "id", d.id(), slog.Any("files", ls))
 	type fileNumAndName struct {
 		num  fileNum
 		name string
@@ -121,7 +123,8 @@ func open(name string, dirname string, opts *Options) (*db, error) {
 	})
 	for _, indexFile := range indexFiles {
 		if _, ok := logFiles[indexFile.num]; !ok {
-			plog.Panicf("log file %d missing", indexFile.num)
+			plog.Error("log file missing", "log_num", indexFile.num)
+			panic(fmt.Errorf("log file %d missing", indexFile.num))
 		}
 		if err := d.mu.nodeStates.load(dirname, indexFile.num, opts.FS); err != nil {
 			// TODO: we can actually regenerate the index when it is corrupted
@@ -129,12 +132,14 @@ func open(name string, dirname string, opts *Options) (*db, error) {
 		}
 		delete(logFiles, indexFile.num)
 	}
-	plog.Infof("%s logFiles to rebuild: %v", d.id(), logFiles)
-	plog.Infof("%s indexFiles: %v", d.id(), indexFiles)
+	plog.Info("logFiles to rebuild",
+		"id", d.id(), slog.Any("log_files", logFiles))
+	plog.Info("indexFiles", "id", d.id(), slog.Any("index_files", indexFiles))
 	for _, lf := range logFiles {
 		if len(indexFiles) == 0 || lf.num > indexFiles[len(indexFiles)-1].num {
 			if lf.num != lastLogNum {
-				plog.Panicf("more than one log file have index missing")
+				plog.Error("more than one log file have index missing")
+				panic(errors.New("more than one log file have index missing"))
 			}
 			if err := d.rebuildLogAndIndex(lf.num); err != nil {
 				return nil, err
@@ -198,7 +203,7 @@ func (d *db) createNewLog() error {
 }
 
 func (d *db) rebuildLogAndIndex(logNum fileNum) (err error) {
-	plog.Infof("%s rebuildLogAndIndex, logNum %d", d.id(), logNum)
+	plog.Info("rebuildLogAndIndex", "id", d.id(), "log_num", logNum)
 	f := func(u pb.Update, offset int64) bool {
 		d.updateIndex(u, offset, logNum)
 		return true
@@ -254,7 +259,9 @@ func (d *db) rebuildLog(logNum fileNum) (err error) {
 			return false
 		}
 		if newOffset != offset {
-			plog.Panicf("offset changed, %d, %d", offset, newOffset)
+			plog.Error("offset changed",
+				"offset", offset, "new_offset", newOffset)
+			panic(fmt.Errorf("offset changed, %d, %d", offset, newOffset))
 		}
 		newOffset = updatedOffset
 		return true
@@ -287,7 +294,7 @@ func (d *db) close() error {
 	// Note that versionSet.close() only closes the MANIFEST. The versions list
 	// is still valid for the checks below.
 	err = firstError(err, d.mu.versions.close())
-	plog.Infof("%s is being closed, logNum %d", d.id(), d.mu.logNum)
+	plog.Info("tan db is being closed", "id", d.id(), "log_num", d.mu.logNum)
 	err = firstError(err, d.mu.logFile.Close())
 	err = firstError(err, d.dataDir.Close())
 

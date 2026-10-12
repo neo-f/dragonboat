@@ -15,6 +15,9 @@
 package dragonboat
 
 import (
+	"errors"
+	"fmt"
+	"log/slog"
 	"reflect"
 	"sync"
 	"time"
@@ -425,7 +428,8 @@ func (p *workerPool) workerPoolMain() {
 			p.loadNodes()
 			for cid := range shards {
 				if j, ok := p.getSaveJob(cid); ok {
-					plog.Debugf("%s saveRequested for %d", p.nh.describe(), cid)
+					plog.Debug("saveRequested",
+						"id", p.nh.describe(), "shard_id", cid)
 					p.pending = append(p.pending, j)
 					toSchedule = true
 				}
@@ -435,7 +439,8 @@ func (p *workerPool) workerPoolMain() {
 			p.loadNodes()
 			for cid := range shards {
 				if j, ok := p.getRecoverJob(cid); ok {
-					plog.Debugf("%s recoverRequested for %d", p.nh.describe(), cid)
+					plog.Debug("recoverRequested",
+						"id", p.nh.describe(), "shard_id", cid)
 					p.pending = append(p.pending, j)
 					toSchedule = true
 				}
@@ -445,7 +450,8 @@ func (p *workerPool) workerPoolMain() {
 			p.loadNodes()
 			for cid := range shards {
 				if j, ok := p.getStreamJob(cid); ok {
-					plog.Debugf("%s streamRequested for %d", p.nh.describe(), cid)
+					plog.Debug("streamRequested",
+						"id", p.nh.describe(), "shard_id", cid)
 					p.pending = append(p.pending, j)
 					toSchedule = true
 				}
@@ -459,7 +465,8 @@ func (p *workerPool) workerPoolMain() {
 		} else if chosen == len(cases)-1 {
 			p.loadNodes()
 		} else {
-			plog.Panicf("chosen %d, unexpected case", chosen)
+			plog.Error("unexpected case", "chosen", chosen)
+			panic(fmt.Errorf("chosen %v, unexpected case", chosen))
 		}
 		if toSchedule {
 			p.loadNodes()
@@ -488,7 +495,9 @@ func (p *workerPool) loadNodes() {
 		p.cci = p.nh.forEachShard(func(cid uint64, n *node) bool {
 			if on, ok := p.nodes[cid]; ok {
 				if on.instanceID != n.instanceID {
-					plog.Panicf("%s from two incarnations found", n.id())
+					plog.Error("node from two incarnations found",
+						"id", n.id())
+					panic(fmt.Errorf("%v from two incarnations found", n.id()))
 				}
 				newNodes[cid] = on
 			} else {
@@ -514,23 +523,25 @@ func (p *workerPool) completed(workerID uint64) {
 	count := 0
 	n, ok := p.busy[workerID]
 	if !ok {
-		plog.Panicf("worker %d is not busy", workerID)
+		plog.Error("worker is not busy", "worker_id", workerID)
+		panic(fmt.Errorf("worker %v is not busy", workerID))
 	}
 	if _, ok := p.saving[n.shardID]; ok {
-		plog.Debugf("%s completed saveRequested", n.id())
+		plog.Debug("completed saveRequested", "id", n.id())
 		delete(p.saving, n.shardID)
 		count++
 	}
 	if _, ok := p.recovering[n.shardID]; ok {
-		plog.Debugf("%s completed recoverRequested", n.id())
+		plog.Debug("completed recoverRequested", "id", n.id())
 		delete(p.recovering, n.shardID)
 		count++
 	}
 	if sc, ok := p.streaming[n.shardID]; ok {
-		plog.Debugf("%s completed streamRequested", n.id())
+		plog.Debug("completed streamRequested", "id", n.id())
 		switch sc {
 		case 0:
-			plog.Panicf("node completed streaming when not streaming")
+			plog.Error("node completed streaming when not streaming")
+			panic(errors.New("node completed streaming when not streaming"))
 		case 1:
 			delete(p.streaming, n.shardID)
 		default:
@@ -539,10 +550,12 @@ func (p *workerPool) completed(workerID uint64) {
 		count++
 	}
 	if count == 0 {
-		plog.Panicf("not sure what got completed")
+		plog.Error("not sure what got completed")
+		panic(errors.New("not sure what got completed"))
 	}
 	if count > 1 {
-		plog.Panicf("completed more than one type of snapshot op")
+		plog.Error("completed more than one type of snapshot op")
+		panic(errors.New("completed more than one type of snapshot op"))
 	}
 	p.setIdle(workerID)
 }
@@ -578,15 +591,16 @@ func (p *workerPool) canSchedule(j job) bool {
 	} else if j.task.Stream {
 		return p.canStream(j.shardID)
 	} else {
-		plog.Panicf("unknown task type %+v", j.task)
+		plog.Error("unknown task type", slog.Any("task", j.task))
+		panic(fmt.Errorf("unknown task type %v", j.task))
 	}
-	panic("not suppose to reach here")
 }
 
 func (p *workerPool) setIdle(workerID uint64) {
 	n, ok := p.busy[workerID]
 	if !ok {
-		plog.Panicf("worker %d is not busy", workerID)
+		plog.Error("worker is not busy", "worker_id", workerID)
+		panic(fmt.Errorf("worker %v is not busy", workerID))
 	}
 	delete(p.busy, workerID)
 	p.updateLoadedBusyNodes()
@@ -595,7 +609,8 @@ func (p *workerPool) setIdle(workerID uint64) {
 
 func (p *workerPool) setBusy(n *node, workerID uint64) {
 	if _, ok := p.busy[workerID]; ok {
-		plog.Panicf("trying to use a busy worker")
+		plog.Error("trying to use a busy worker")
+		panic(errors.New("trying to use a busy worker"))
 	}
 	n.loaded()
 	p.busy[workerID] = n
@@ -612,14 +627,16 @@ func (p *workerPool) startStreaming(n *node) {
 
 func (p *workerPool) startSaving(n *node) {
 	if _, ok := p.saving[n.shardID]; ok {
-		plog.Panicf("%s trying to start saving again", n.id())
+		plog.Error("trying to start saving again", "id", n.id())
+		panic(fmt.Errorf("%v trying to start saving again", n.id()))
 	}
 	p.saving[n.shardID] = struct{}{}
 }
 
 func (p *workerPool) startRecovering(n *node) {
 	if _, ok := p.recovering[n.shardID]; ok {
-		plog.Panicf("%s trying to start recovering again", n.id())
+		plog.Error("trying to start recovering again", "id", n.id())
+		panic(fmt.Errorf("%v trying to start recovering again", n.id()))
 	}
 	p.recovering[n.shardID] = struct{}{}
 }
@@ -633,7 +650,8 @@ func (p *workerPool) start(j job, n *node, workerID uint64) {
 	} else if j.task.Stream {
 		p.startStreaming(n)
 	} else {
-		plog.Panicf("unknown task type %+v", j.task)
+		plog.Error("unknown task type", slog.Any("task", j.task))
+		panic(fmt.Errorf("unknown task type %v", j.task))
 	}
 }
 
@@ -651,7 +669,7 @@ func (p *workerPool) scheduleWorker() bool {
 	}
 	w := p.getWorker()
 	if w == nil {
-		plog.Debugf("%s no more worker", p.nh.describe())
+		plog.Debug("no more worker", "id", p.nh.describe())
 		return false
 	}
 	for idx, j := range p.pending {
@@ -852,7 +870,8 @@ func (p *closeWorkerPool) workerPoolMain() {
 			workerID := uint64(chosen - 2)
 			p.completed(workerID)
 		} else {
-			plog.Panicf("chosen %d, unknown case", chosen)
+			plog.Error("unknown case", "chosen", chosen)
+			panic(fmt.Errorf("chosen %v, unknown case", chosen))
 		}
 		p.schedule()
 	}
@@ -865,8 +884,8 @@ func (p *closeWorkerPool) timedWait() {
 	defer p.workerStopper.Stop()
 	defer func() {
 		if timeout {
-			plog.Infof("timedWait ready to exit, busy %d, pending %d",
-				len(p.busy), len(p.pending))
+			plog.Info("timedWait ready to exit",
+				"busy", len(p.busy), "pending", len(p.pending))
 		}
 	}()
 	// p.ready is buffered, don't ignore that buffered close req
@@ -903,7 +922,8 @@ func (p *closeWorkerPool) timedWait() {
 			p.completed(workerID)
 			p.schedule()
 		} else {
-			plog.Panicf("chosen %d, unknown case", chosen)
+			plog.Error("unknown case", "chosen", chosen)
+			panic(fmt.Errorf("chosen %v, unknown case", chosen))
 		}
 	}
 }
@@ -915,10 +935,13 @@ func (p *closeWorkerPool) isIdle() bool {
 func (p *closeWorkerPool) completed(workerID uint64) {
 	shardID, ok := p.busy[workerID]
 	if !ok {
-		plog.Panicf("close worker %d is not in busy state", workerID)
+		plog.Error("close worker is not in busy state",
+			"worker_id", workerID)
+		panic(fmt.Errorf("close worker %v is not in busy state", workerID))
 	}
 	if _, ok := p.processing[shardID]; !ok {
-		plog.Panicf("shard %d is not being processed", shardID)
+		plog.Error("shard is not being processed", "shard_id", shardID)
+		panic(fmt.Errorf("shard %v is not being processed", shardID))
 	}
 	delete(p.processing, shardID)
 	delete(p.busy, workerID)
@@ -1273,7 +1296,9 @@ func (e *engine) loadBucketNodes(workerID uint64,
 		newCSI = e.nh.forEachShard(func(cid uint64, v *node) bool {
 			if n, ok := nodes[cid]; ok {
 				if n.instanceID != v.instanceID {
-					plog.Panicf("%s from two incarnations found", n.id())
+					plog.Error("node from two incarnations found",
+						"id", n.id())
+					panic(fmt.Errorf("%v from two incarnations found", n.id()))
 				}
 			} else {
 				if partitioner.GetPartitionID(cid) == bucket {

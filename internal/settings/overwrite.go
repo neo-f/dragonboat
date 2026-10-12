@@ -16,6 +16,7 @@ package settings
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -56,24 +57,30 @@ func overwriteSettings(cfg map[string]any, rd reflect.Value) {
 			case "uint64":
 				f, ok := val.(float64)
 				if !ok {
-					plog.Panicf("setting %s is not a float64 value", key)
+					plog.Error("setting is not a float64 value",
+						"setting", key)
+					panic(fmt.Errorf("setting %v is not a float64 value", key))
 				}
 				nv := uint64(f)
-				plog.Infof("Setting %s to uint64 value %d", key, nv)
+				plog.Info("Setting to uint64 value", "setting", key, "value", nv)
 				field.SetUint(nv)
 			case "bool":
 				b, ok := val.(bool)
 				if !ok {
-					plog.Panicf("setting %s is not a bool value", key)
+					plog.Error("setting is not a bool value",
+						"setting", key)
+					panic(fmt.Errorf("setting %v is not a bool value", key))
 				}
-				plog.Infof("Setting %s to bool value %t", key, b)
+				plog.Info("Setting to bool value", "setting", key, "value", b)
 				field.SetBool(b)
 			case "string":
 				s, ok := val.(string)
 				if !ok {
-					plog.Panicf("setting %s is not a string value", key)
+					plog.Error("setting is not a string value",
+						"setting", key)
+					panic(fmt.Errorf("setting %v is not a string value", key))
 				}
-				plog.Infof("Setting %s to string value %s", key, s)
+				plog.Info("Setting to string value", "setting", key, "value", s)
 				field.SetString(s)
 			default:
 			}

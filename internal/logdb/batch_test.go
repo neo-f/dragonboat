@@ -398,7 +398,7 @@ func TestSaveEntriesAcrossMultipleBatches(t *testing.T) {
 		eb, ok := be.getBatchFromDB(shardID, replicaID, 1)
 		assert.True(t, ok, "failed to get first batch")
 		for _, e := range eb.Entries {
-			plog.Infof("idx %d", e.Index)
+			plog.Info("batch entry", "index", e.Index)
 		}
 	}
 	fs := vfs.GetTestFS()

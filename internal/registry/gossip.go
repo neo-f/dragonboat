@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/gob"
+	"log/slog"
 	"net"
 	"strconv"
 	"sync"
@@ -28,10 +29,9 @@ import (
 	"github.com/lni/goutils/syncutil"
 
 	"github.com/neo-f/dragonboat/v4/config"
-	"github.com/neo-f/dragonboat/v4/logger"
 )
 
-var plog = logger.GetLogger("registry")
+var plog = slog.With("pkg", "registry")
 
 type getShardInfo func() []ShardInfo
 
@@ -252,8 +252,8 @@ func newGossipManager(nhid string, f getShardInfo,
 	cfg.GossipNodes = 6
 	cfg.UDPBufferSize = 32 * 1024
 	if nhConfig.Expert.TestGossipProbeInterval > 0 {
-		plog.Infof("gossip probe interval set to %s",
-			nhConfig.Expert.TestGossipProbeInterval)
+		plog.Info("gossip probe interval set",
+			"interval", nhConfig.Expert.TestGossipProbeInterval)
 		cfg.ProbeInterval = nhConfig.Expert.TestGossipProbeInterval
 	}
 	bindAddr, bindPort, err := parseAddress(nhConfig.Gossip.BindAddress)
@@ -262,7 +262,7 @@ func newGossipManager(nhid string, f getShardInfo,
 	}
 	cfg.BindAddr = bindAddr
 	cfg.BindPort = bindPort
-	plog.Infof("gossip bind address %s port %d", cfg.BindAddr, cfg.BindPort)
+	plog.Info("gossip bind address", "address", cfg.BindAddr, "port", cfg.BindPort)
 	if len(nhConfig.Gossip.AdvertiseAddress) > 0 {
 		aAddr, aPort, err := parseAddress(nhConfig.Gossip.AdvertiseAddress)
 		if err != nil {
@@ -270,7 +270,7 @@ func newGossipManager(nhid string, f getShardInfo,
 		}
 		cfg.AdvertiseAddr = aAddr
 		cfg.AdvertisePort = aPort
-		plog.Infof("gossip advertise address %s port %d", aAddr, aPort)
+		plog.Info("gossip advertise address", "address", aAddr, "port", aPort)
 	}
 	view := newView(nhConfig.GetDeploymentID())
 	meta := meta{
@@ -287,7 +287,7 @@ func newGossipManager(nhid string, f getShardInfo,
 
 	list, err := memberlist.Create(cfg)
 	if err != nil {
-		plog.Errorf("failed to create memberlist, %v", err)
+		plog.Error("failed to create memberlist", "error", err)
 		return nil, err
 	}
 	seed := make([]string, 0, len(nhConfig.Gossip.Seed))
@@ -323,14 +323,14 @@ func newGossipManager(nhid string, f getShardInfo,
 
 func (g *gossipManager) join(seed []string) {
 	if _, err := g.list.Join(seed); err != nil {
-		plog.Errorf("failed to join the gossip group, %v", err)
+		plog.Error("failed to join the gossip group", "error", err)
 	}
 }
 
 func (g *gossipManager) Close() error {
 	g.stopper.Stop()
 	if err := g.list.Leave(time.Second); err != nil {
-		plog.Errorf("memberlist leave failed: %v", err)
+		plog.Error("memberlist leave failed", "error", err)
 	}
 	if err := g.list.Shutdown(); err != nil {
 		return errors.Wrapf(err, "shutdown memberlist failed")

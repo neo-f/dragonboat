@@ -17,6 +17,7 @@ package dragonboat
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math/rand/v2"
 	"slices"
 	"strings"
@@ -203,7 +204,9 @@ func doGetTestRaftNodes(testDir string, startID uint64, count int, ordered bool,
 		ldb, err = logdb.NewDefaultLogDB(cfg,
 			nil, []string{nodeLogDir}, []string{nodeLowLatencyLogDir})
 		if err != nil {
-			plog.Panicf("failed to open logdb, %+v", err)
+			plog.Error("failed to open logdb",
+				slog.String("error", fmt.Sprintf("%+v", err)))
+			panic(fmt.Errorf("failed to open logdb, %w", err))
 		}
 	}
 	// message router
@@ -446,7 +449,7 @@ func getProposalTestClient(n *node,
 	cs.PrepareForRegister()
 	rs, err := n.pendingProposals.propose(cs, nil, 50)
 	if err != nil {
-		plog.Errorf("error: %v", err)
+		plog.Error("failed to propose", "error", err)
 		return nil, false
 	}
 	stepNodes(nodes, smList, router, 50)
@@ -456,12 +459,12 @@ func getProposalTestClient(n *node,
 			cs.PrepareForPropose()
 			return cs, true
 		}
-		plog.Infof("unknown result/code: %v", v)
+		plog.Info("unknown result/code", slog.Any("result", v))
 	case <-n.stopC:
-		plog.Errorf("stopc triggered")
+		plog.Error("stopc triggered")
 		return nil, false
 	}
-	plog.Errorf("failed get test client")
+	plog.Error("failed get test client")
 	return nil, false
 }
 
@@ -803,8 +806,8 @@ func TestReproposeRespondedDataWillTimeout(t *testing.T) {
 			respondedSeriesID = session.RespondedTo
 		}
 		session.SeriesID = respondedSeriesID
-		plog.Infof("series id %d, responded to %d",
-			session.SeriesID, session.RespondedTo)
+		plog.Info("series",
+			"series_id", session.SeriesID, "responded_to", session.RespondedTo)
 		rs, _ := n.propose(session, data, 10)
 		stepNodes(nodes, smList, router, 10)
 		select {

@@ -20,6 +20,8 @@ package config
 
 import (
 	"crypto/tls"
+	"fmt"
+	"log/slog"
 	"net"
 	"path/filepath"
 	"reflect"
@@ -34,13 +36,12 @@ import (
 	"github.com/neo-f/dragonboat/v4/internal/id"
 	"github.com/neo-f/dragonboat/v4/internal/settings"
 	"github.com/neo-f/dragonboat/v4/internal/vfs"
-	"github.com/neo-f/dragonboat/v4/logger"
 	"github.com/neo-f/dragonboat/v4/raftio"
 	pb "github.com/neo-f/dragonboat/v4/raftpb"
 )
 
 var (
-	plog = logger.GetLogger("config")
+	plog = slog.With("pkg", "config")
 )
 
 const (
@@ -214,7 +215,7 @@ func (c *Config) Validate() error {
 		return errors.New("invalid election rtt")
 	}
 	if c.ElectionRTT < 10*c.HeartbeatRTT {
-		plog.Warningf("ElectionRTT is not a magnitude larger than HeartbeatRTT")
+		plog.Warn("ElectionRTT is not a magnitude larger than HeartbeatRTT")
 	}
 	if c.MaxInMemLogSize > 0 &&
 		c.MaxInMemLogSize < settings.EntryNonCmdFieldsSize+1 {
@@ -547,9 +548,9 @@ func (c *NodeHostConfig) Validate() error {
 		return errors.New("NodeHostConfig.NodeHostDir is empty")
 	}
 	if !c.MutualTLS {
-		plog.Warningf("mutual TLS disabled, communication is insecure")
+		plog.Warn("mutual TLS disabled, communication is insecure")
 		if len(c.CAFile) > 0 || len(c.CertFile) > 0 || len(c.KeyFile) > 0 {
-			plog.Warningf("CAFile/CertFile/KeyFile specified when MutualTLS is disabled")
+			plog.Warn("CAFile/CertFile/KeyFile specified when MutualTLS is disabled")
 		}
 	}
 	if c.MutualTLS {
@@ -642,7 +643,8 @@ func (l *defaultLogDB) Name() string {
 	}
 	ldb, err := l.factory(nhc, nil, []string{dir}, []string{})
 	if err != nil {
-		plog.Panicf("failed to create ldb, %v", err)
+		plog.Error("failed to create ldb", "error", err)
+		panic(fmt.Errorf("failed to create ldb, %w", err))
 	}
 	defer func() {
 		if err := ldb.Close(); err != nil {
@@ -669,11 +671,11 @@ func (c *NodeHostConfig) Prepare() error {
 		c.Expert.FS = vfs.DefaultFS
 	}
 	if c.Expert.Engine.IsEmpty() {
-		plog.Infof("using default EngineConfig")
+		plog.Info("using default EngineConfig")
 		c.Expert.Engine = GetDefaultEngineConfig()
 	}
 	if c.Expert.LogDB.IsEmpty() {
-		plog.Infof("using default LogDBConfig")
+		plog.Info("using default LogDBConfig")
 		c.Expert.LogDB = GetDefaultLogDBConfig()
 	}
 	if c.RaftRPCFactory != nil && c.Expert.TransportFactory == nil {

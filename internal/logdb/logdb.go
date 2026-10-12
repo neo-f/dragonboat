@@ -21,15 +21,17 @@ to import this package.
 package logdb
 
 import (
+	"fmt"
+	"log/slog"
+
 	"github.com/neo-f/dragonboat/v4/config"
 	"github.com/neo-f/dragonboat/v4/internal/logdb/kv"
-	"github.com/neo-f/dragonboat/v4/logger"
 	"github.com/neo-f/dragonboat/v4/raftio"
 	pb "github.com/neo-f/dragonboat/v4/raftpb"
 )
 
 var (
-	plog = logger.GetLogger("logdb")
+	plog = slog.With("pkg", "logdb")
 )
 
 // IReusableKey is the interface for keys that can be reused. A reusable key is
@@ -140,16 +142,24 @@ func NewLogDB(config config.NodeHostConfig,
 func checkDirs(numOfShards uint64, dirs []string, lldirs []string) {
 	if len(dirs) == 1 {
 		if len(lldirs) != 0 && len(lldirs) != 1 {
-			plog.Panicf("only 1 regular dir but %d low latency dirs", len(lldirs))
+			plog.Error("only 1 regular dir but multiple low latency dirs",
+				"lldirs_len", len(lldirs))
+			panic(fmt.Errorf("only 1 regular dir but %d low latency dirs",
+				len(lldirs)))
 		}
 	} else if len(dirs) > 1 {
 		if uint64(len(dirs)) != numOfShards {
-			plog.Panicf("%d regular dirs, but expect to have %d rdb instances",
-				len(dirs), numOfShards)
+			plog.Error("unexpected number of regular dirs",
+				"dirs_len", len(dirs), "num_shards", numOfShards)
+			panic(fmt.Errorf("%d regular dirs, but expect to have %d rdb instances",
+				len(dirs), numOfShards))
 		}
 		if len(lldirs) > 0 {
 			if len(dirs) != len(lldirs) {
-				plog.Panicf("%v regular dirs, but %v low latency dirs", dirs, lldirs)
+				plog.Error("mismatched regular and low latency dirs",
+					"dirs", dirs, "lldirs", lldirs)
+				panic(fmt.Errorf("%v regular dirs, but %v low latency dirs",
+					dirs, lldirs))
 			}
 		}
 	} else {

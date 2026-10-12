@@ -17,6 +17,7 @@ package rsm
 import (
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"io"
 
 	"github.com/lni/goutils/cache/biogo/store/llrb"
@@ -139,7 +140,8 @@ func (s *Session) recoverFromSnapshot(reader io.Reader, v SSVersion) error {
 			panic(err)
 		}
 	default:
-		plog.Panicf("unknown version number %d", v)
+		plog.Error("unknown version number", "version", v)
+		panic(fmt.Errorf("unknown version number %d", v))
 	}
 	return nil
 }

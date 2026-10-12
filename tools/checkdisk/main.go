@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"os"
 	"runtime"
 	"runtime/pprof"
@@ -32,7 +33,6 @@ import (
 	"github.com/neo-f/dragonboat/v4/internal/logdb"
 	"github.com/neo-f/dragonboat/v4/internal/logdb/kv/pebble"
 	"github.com/neo-f/dragonboat/v4/internal/vfs"
-	"github.com/neo-f/dragonboat/v4/logger"
 	"github.com/neo-f/dragonboat/v4/raftio"
 	sm "github.com/neo-f/dragonboat/v4/statemachine"
 )
@@ -144,11 +144,7 @@ func main() {
 			panic(err)
 		}
 	}()
-	logger.GetLogger("raft").SetLevel(logger.WARNING)
-	logger.GetLogger("rsm").SetLevel(logger.WARNING)
-	logger.GetLogger("logdb").SetLevel(logger.WARNING)
-	logger.GetLogger("transport").SetLevel(logger.WARNING)
-	logger.GetLogger("dragonboat").SetLevel(logger.WARNING)
+	slog.SetLogLoggerLevel(slog.LevelWarn)
 	lc := config.GetLargeMemLogDBConfig()
 	lc.SaveBufferSize = 64 * 1024 * 1024
 	lc.KVMaxWriteBufferNumber = 8

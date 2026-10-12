@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -32,11 +33,10 @@ import (
 	"github.com/neo-f/dragonboat/v4/internal/logdb/kv"
 	"github.com/neo-f/dragonboat/v4/internal/utils"
 	"github.com/neo-f/dragonboat/v4/internal/vfs"
-	"github.com/neo-f/dragonboat/v4/logger"
 )
 
 var (
-	plog = logger.GetLogger("pebblekv")
+	plog = slog.With("pkg", "pebblekv")
 )
 
 const (
@@ -127,15 +127,15 @@ var _ pebble.Logger = (*pebbleLogger)(nil)
 var PebbleLogger pebbleLogger
 
 func (pebbleLogger) Infof(format string, args ...any) {
-	pebble.DefaultLogger.Infof(format, args...)
+	plog.Info(fmt.Sprintf(format, args...))
 }
 
 func (pebbleLogger) Errorf(format string, args ...any) {
-	pebble.DefaultLogger.Errorf(format, args...)
+	plog.Error(fmt.Sprintf(format, args...))
 }
 
 func (pebbleLogger) Fatalf(format string, args ...any) {
-	pebble.DefaultLogger.Infof(format, args...)
+	plog.Error(fmt.Sprintf(format, args...))
 	panic(fmt.Errorf(format, args...))
 }
 
@@ -168,7 +168,7 @@ func openPebbleDB(config config.LogDBConfig, callback kv.LogDBCallback,
 	}
 	pebbleWarning.Do(func() {
 		if fs == vfs.MemStrictFS {
-			plog.Warningf("running in pebble memfs test mode")
+			plog.Warn("running in pebble memfs test mode")
 		}
 	})
 	blockSize := int(config.KVBlockSize)
@@ -280,7 +280,9 @@ func (r *KV) Close() error {
 func iteratorIsValid(iter *pebble.Iterator) bool {
 	v := iter.Valid()
 	if err := iter.Error(); err != nil {
-		plog.Panicf("%+v", err)
+		plog.Error("iterator error",
+			slog.String("error", fmt.Sprintf("%+v", err)))
+		panic(err)
 	}
 	return v
 }

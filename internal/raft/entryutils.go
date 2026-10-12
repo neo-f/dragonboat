@@ -15,6 +15,8 @@
 package raft
 
 import (
+	"fmt"
+
 	pb "github.com/neo-f/dragonboat/v4/raftpb"
 )
 
@@ -38,12 +40,16 @@ func checkEntriesToAppend(ents []pb.Entry, toAppend []pb.Entry) {
 		return
 	}
 	if ents[len(ents)-1].Index+1 != toAppend[0].Index {
-		plog.Panicf("found a hole, last %d, first to append %d",
-			ents[len(ents)-1].Index, toAppend[0].Index)
+		plog.Error("found a hole",
+			"last_index", ents[len(ents)-1].Index, "first_to_append", toAppend[0].Index)
+		panic(fmt.Errorf("found a hole, last %d, first to append %d",
+			ents[len(ents)-1].Index, toAppend[0].Index))
 	}
 	if ents[len(ents)-1].Term > toAppend[0].Term {
-		plog.Panicf("term value not expected, %d vs %d",
-			ents[len(ents)-1].Term, toAppend[0].Term)
+		plog.Error("term value not expected",
+			"last_term", ents[len(ents)-1].Term, "first_to_append_term", toAppend[0].Term)
+		panic(fmt.Errorf("term value not expected, %d vs %d",
+			ents[len(ents)-1].Term, toAppend[0].Term))
 	}
 }
 

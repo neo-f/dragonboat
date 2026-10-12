@@ -15,6 +15,8 @@
 package dragonboat
 
 import (
+	"fmt"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 
@@ -37,7 +39,9 @@ func (sr *snapshotTask) setStreamTask(t rsm.Task, getSinkFn getSink) {
 	sr.mu.Lock()
 	defer sr.mu.Unlock()
 	if sr.hasTask {
-		plog.Panicf("setting stream snapshot task again %+v\n%+v", sr.t, t)
+		plog.Error("setting stream snapshot task again",
+			slog.Any("existing_task", sr.t), slog.Any("task", t))
+		panic(fmt.Errorf("setting stream snapshot task again %v\n%v", sr.t, t))
 	}
 	sr.hasTask = true
 	sr.t = t
@@ -48,7 +52,9 @@ func (sr *snapshotTask) setTask(t rsm.Task) {
 	sr.mu.Lock()
 	defer sr.mu.Unlock()
 	if sr.hasTask {
-		plog.Panicf("setting snapshot task again %+v\n%+v", sr.t, t)
+		plog.Error("setting snapshot task again",
+			slog.Any("existing_task", sr.t), slog.Any("task", t))
+		panic(fmt.Errorf("setting snapshot task again %v\n%v", sr.t, t))
 	}
 	sr.hasTask = true
 	sr.t = t
@@ -195,8 +201,10 @@ func (rs *snapshotState) notifySnapshotStatus(save bool,
 		count++
 	}
 	if count != 1 {
-		plog.Panicf("invalid request, save %t, recover %t, stream %t",
-			save, recovering, stream)
+		plog.Error("invalid request",
+			"save", save, "recover", recovering, "stream", stream)
+		panic(fmt.Errorf("invalid request, save %v, recover %v, stream %v",
+			save, recovering, stream))
 	}
 	t := rsm.Task{
 		Save:    save,

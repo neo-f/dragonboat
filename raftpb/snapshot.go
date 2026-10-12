@@ -53,7 +53,7 @@ func (m *Snapshot) Unref() error {
 		panic("not loaded")
 	}
 	if atomic.AddInt32(m.refCount, -1) == 0 {
-		plog.Infof("going to call compact on %d", m.Index)
+		plog.Info("going to call compact", "index", m.Index)
 		return m.compactor.Compact(m.Index)
 	}
 	return nil

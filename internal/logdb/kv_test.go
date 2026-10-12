@@ -419,7 +419,7 @@ func modifyDataFile(fp string, fs vfs.IFS) (bool, error) {
 			return errors.New("failed to locaate the data")
 		}
 		if _, err = f.WriteAt([]byte(corruptedContent), idx); err != nil {
-			plog.Infof("failed to write")
+			plog.Info("failed to write")
 			return err
 		}
 		return nil
