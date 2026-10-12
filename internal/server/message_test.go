@@ -24,8 +24,8 @@ import (
 
 func TestMessageQueueCanBeCreated(t *testing.T) {
 	q := NewMessageQueue(8, false, 0, 0)
-	require.Equal(t, 8, len(q.left))
-	require.Equal(t, 8, len(q.right))
+	require.Len(t, q.left, 8)
+	require.Len(t, q.right, 8)
 }
 
 func TestMessageCanBeAddedAndGet(t *testing.T) {
@@ -67,7 +67,7 @@ func TestSnapshotCanAlwaysBeAdded(t *testing.T) {
 		n := len(q.nodrop)
 		added := q.MustAdd(pb.Message{Type: pb.InstallSnapshot})
 		require.True(t, added)
-		require.Equal(t, n+1, len(q.nodrop))
+		require.Len(t, q.nodrop, n+1)
 	}
 }
 
@@ -77,7 +77,7 @@ func TestUnreachableMsgCanAlwaysBeAdded(t *testing.T) {
 		n := len(q.nodrop)
 		added := q.MustAdd(pb.Message{Type: pb.Unreachable})
 		require.True(t, added)
-		require.Equal(t, n+1, len(q.nodrop))
+		require.Len(t, q.nodrop, n+1)
 	}
 }
 
@@ -100,7 +100,7 @@ func TestAddedSnapshotWillBeReturned(t *testing.T) {
 	added = q.MustAdd(pb.Message{Type: pb.InstallSnapshot})
 	require.True(t, added)
 	msgs := q.Get()
-	require.Equal(t, 11, len(msgs))
+	require.Len(t, msgs, 11)
 	count := 0
 	for _, msg := range msgs {
 		if msg.Type == pb.InstallSnapshot {
@@ -108,7 +108,7 @@ func TestAddedSnapshotWillBeReturned(t *testing.T) {
 		}
 	}
 	require.Equal(t, 3, count)
-	require.Equal(t, 0, len(q.nodrop))
+	require.Empty(t, q.nodrop)
 }
 
 func TestMessageQueueCanBeStopped(t *testing.T) {
@@ -190,15 +190,15 @@ func TestGetDelayed(t *testing.T) {
 	q := NewMessageQueue(10, false, 0, 1024)
 	q.AddDelayed(pb.Message{From: 1, Type: pb.SnapshotStatus}, 2)
 	q.AddDelayed(pb.Message{From: 2, Type: pb.SnapshotStatus}, 10)
-	require.Equal(t, 2, len(q.delayed))
+	require.Len(t, q.delayed, 2)
 	result := q.getDelayed()
-	require.Equal(t, 0, len(result))
+	require.Empty(t, result)
 	q.Tick()
 	q.Tick()
 	q.Tick()
 	result = q.getDelayed()
-	require.Equal(t, 1, len(result))
-	require.Equal(t, 1, len(q.delayed))
+	require.Len(t, result, 1)
+	require.Len(t, q.delayed, 1)
 	require.Equal(t, uint64(1), result[0].From)
 	require.Equal(t, uint64(2), q.delayed[0].m.From)
 }
@@ -217,9 +217,9 @@ func TestDelayedMessage(t *testing.T) {
 	q.Tick()
 	q.Tick()
 	result := q.Get()
-	require.Equal(t, 1, len(q.delayed))
+	require.Len(t, q.delayed, 1)
 	require.Equal(t, dm2, q.delayed[0].m)
-	require.Equal(t, 3, len(result))
+	require.Len(t, result, 3)
 	require.Equal(t, mm, result[0])
 	require.Equal(t, dm1, result[1])
 	require.Equal(t, rm, result[2])

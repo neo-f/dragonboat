@@ -23,6 +23,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const testAddr1 = "addr1"
+
 func TestAddressEqual(t *testing.T) {
 	tests := []struct {
 		addr1 string
@@ -54,10 +56,10 @@ func TestDeepCopyMembership(t *testing.T) {
 	}
 	copied := deepCopyMembership(m)
 	m.ConfigChangeId = 102
-	m.Addresses[1] = "addr1"
+	m.Addresses[1] = testAddr1
 	m.Removed[1] = true
-	m.NonVotings[1] = "addr1"
-	m.Witnesses[1] = "addr1"
+	m.NonVotings[1] = testAddr1
+	m.Witnesses[1] = testAddr1
 	assert.Equal(t, uint64(101), copied.ConfigChangeId)
 	assert.Empty(t, copied.Addresses)
 	assert.Empty(t, copied.Removed)
@@ -89,7 +91,7 @@ func TestMembershipCanBeSet(t *testing.T) {
 		NonVotings:     make(map[uint64]string),
 		Witnesses:      make(map[uint64]string),
 	}
-	m.Addresses[1] = "addr1"
+	m.Addresses[1] = testAddr1
 	m.Removed[2] = true
 	m.NonVotings[3] = "addr2"
 	m.Witnesses[4] = "addr3"
@@ -111,7 +113,7 @@ func TestMembershipIsEmpty(t *testing.T) {
 	o := newMembership(1, 2, true)
 	assert.True(t, o.isEmpty())
 
-	o.members.NonVotings[1] = "addr1"
+	o.members.NonVotings[1] = testAddr1
 	assert.True(t, o.isEmpty())
 
 	o.members.Addresses[1] = "addr2"
@@ -286,24 +288,35 @@ func TestIsAddingExistingMember(t *testing.T) {
 	}
 }
 
+var nonVotingPromotionTestCases = []nonVotingPromotionTestCase{
+	{pb.AddWitness, map[uint64]string{1: "a1"}, "a1", 3, false},
+	{pb.AddWitness, map[uint64]string{1: "a1"}, "a2", 1, false},
+	{pb.AddWitness, map[uint64]string{1: "a1"}, "a1", 1, false},
+	{pb.AddNonVoting, map[uint64]string{1: "a1"}, "a1", 3, false},
+	{pb.AddNonVoting, map[uint64]string{1: "a1"}, "a2", 1, false},
+	{pb.AddNonVoting, map[uint64]string{1: "a1"}, "a1", 1, false},
+}
+
 func TestIsPromotingNonVoting(t *testing.T) {
-	tests := []struct {
-		t          pb.ConfigChangeType
-		nonVotings map[uint64]string
-		addr       string
-		replicaID  uint64
-		result     bool
-	}{
+	tests := append([]nonVotingPromotionTestCase{
 		{pb.AddNode, map[uint64]string{1: "a1"}, "a1", 3, false},
 		{pb.AddNode, map[uint64]string{1: "a1"}, "a2", 1, false},
 		{pb.AddNode, map[uint64]string{1: "a1"}, "a1", 1, true},
-		{pb.AddWitness, map[uint64]string{1: "a1"}, "a1", 3, false},
-		{pb.AddWitness, map[uint64]string{1: "a1"}, "a2", 1, false},
-		{pb.AddWitness, map[uint64]string{1: "a1"}, "a1", 1, false},
-		{pb.AddNonVoting, map[uint64]string{1: "a1"}, "a1", 3, false},
-		{pb.AddNonVoting, map[uint64]string{1: "a1"}, "a2", 1, false},
-		{pb.AddNonVoting, map[uint64]string{1: "a1"}, "a1", 1, false},
-	}
+	}, nonVotingPromotionTestCases...)
+	testNonVotingPromotionCheck(t, tests, (*membership).isPromoteNonVoting)
+}
+
+type nonVotingPromotionTestCase struct {
+	t          pb.ConfigChangeType
+	nonVotings map[uint64]string
+	addr       string
+	replicaID  uint64
+	result     bool
+}
+
+func testNonVotingPromotionCheck(t *testing.T,
+	tests []nonVotingPromotionTestCase, check func(*membership, pb.ConfigChange) bool) {
+	t.Helper()
 	for idx, tt := range tests {
 		o := newMembership(1, 2, true)
 		maps.Copy(o.members.NonVotings, tt.nonVotings)
@@ -312,40 +325,18 @@ func TestIsPromotingNonVoting(t *testing.T) {
 			Address:   tt.addr,
 			ReplicaID: tt.replicaID,
 		}
-		result := o.isPromoteNonVoting(cc)
+		result := check(&o, cc)
 		assert.Equal(t, tt.result, result, "test case %d", idx)
 	}
 }
 
 func TestIsInvalidNonVotingPromotion(t *testing.T) {
-	tests := []struct {
-		t          pb.ConfigChangeType
-		nonVotings map[uint64]string
-		addr       string
-		replicaID  uint64
-		result     bool
-	}{
+	tests := append([]nonVotingPromotionTestCase{
 		{pb.AddNode, map[uint64]string{1: "a1"}, "a1", 1, false},
 		{pb.AddNode, map[uint64]string{1: "a1"}, "a1", 3, false},
 		{pb.AddNode, map[uint64]string{1: "a1"}, "a2", 1, true},
-		{pb.AddWitness, map[uint64]string{1: "a1"}, "a1", 3, false},
-		{pb.AddWitness, map[uint64]string{1: "a1"}, "a2", 1, false},
-		{pb.AddWitness, map[uint64]string{1: "a1"}, "a1", 1, false},
-		{pb.AddNonVoting, map[uint64]string{1: "a1"}, "a1", 3, false},
-		{pb.AddNonVoting, map[uint64]string{1: "a1"}, "a2", 1, false},
-		{pb.AddNonVoting, map[uint64]string{1: "a1"}, "a1", 1, false},
-	}
-	for idx, tt := range tests {
-		o := newMembership(1, 2, true)
-		maps.Copy(o.members.NonVotings, tt.nonVotings)
-		cc := pb.ConfigChange{
-			Type:      tt.t,
-			Address:   tt.addr,
-			ReplicaID: tt.replicaID,
-		}
-		result := o.isInvalidNonVotingPromotion(cc)
-		assert.Equal(t, tt.result, result, "test case %d", idx)
-	}
+	}, nonVotingPromotionTestCases...)
+	testNonVotingPromotionCheck(t, tests, (*membership).isInvalidNonVotingPromotion)
 }
 
 func TestApplyAddNode(t *testing.T) {

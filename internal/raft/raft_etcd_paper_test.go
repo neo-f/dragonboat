@@ -59,6 +59,7 @@ func TestLeaderUpdateTermFromMessage(t *testing.T) {
 // it immediately reverts to follower state.
 // Reference: section 5.1
 func testUpdateTermFromMessage(t *testing.T, state State) {
+	t.Helper()
 	r := newTestRaft(1, []uint64{1, 2, 3}, 10, 1, NewTestLogDB())
 	switch state {
 	case follower:
@@ -70,7 +71,7 @@ func testUpdateTermFromMessage(t *testing.T, state State) {
 		r.becomeLeader()
 	}
 
-	ne(r.Handle(pb.Message{Type: pb.Replicate, Term: 2}), t)
+	ne(t, r.Handle(pb.Message{Type: pb.Replicate, Term: 2}))
 
 	if r.term != 2 {
 		t.Errorf("term = %d, want %d", r.term, 2)
@@ -94,7 +95,7 @@ func TestRejectStaleTermMessage(t *testing.T) {
 	r.handle = fakeStep
 	r.loadState(pb.State{Term: 2})
 
-	ne(r.Handle(pb.Message{Type: pb.Replicate, Term: r.term - 1}), t)
+	ne(t, r.Handle(pb.Message{Type: pb.Replicate, Term: r.term - 1}))
 
 	if called {
 		t.Errorf("stepFunc called = %v, want %v", called, false)
@@ -125,7 +126,7 @@ func TestLeaderBcastBeat(t *testing.T) {
 	}
 
 	for range hi {
-		ne(r.tick(), t)
+		ne(t, r.tick())
 	}
 
 	msgs := r.readMessages()
@@ -157,6 +158,7 @@ func TestCandidateStartNewElection(t *testing.T) {
 // round of RequestVote RPCs.
 // Reference: section 5.2
 func testNonleaderStartElection(t *testing.T, state State) {
+	t.Helper()
 	// election timeout
 	et := 10
 	r := newTestRaft(1, []uint64{1, 2, 3}, et, 1, NewTestLogDB())
@@ -168,7 +170,7 @@ func testNonleaderStartElection(t *testing.T, state State) {
 	}
 
 	for i := 1; i < 2*et; i++ {
-		ne(r.tick(), t)
+		ne(t, r.tick())
 	}
 
 	if r.term != 2 {
@@ -225,9 +227,9 @@ func TestLeaderElectionInOneRoundRPC(t *testing.T) {
 	for i, tt := range tests {
 		r := newTestRaft(1, idsBySize(tt.size), 10, 1, NewTestLogDB())
 
-		ne(r.Handle(pb.Message{From: 1, To: 1, Type: pb.Election}), t)
+		ne(t, r.Handle(pb.Message{From: 1, To: 1, Type: pb.Election}))
 		for id, vote := range tt.votes {
-			ne(r.Handle(pb.Message{From: id, To: 1, Type: pb.RequestVoteResp, Reject: !vote}), t)
+			ne(t, r.Handle(pb.Message{From: id, To: 1, Type: pb.RequestVoteResp, Reject: !vote}))
 		}
 
 		if r.state != tt.state {
@@ -259,7 +261,7 @@ func TestFollowerVote(t *testing.T) {
 		r := newTestRaft(1, []uint64{1, 2, 3}, 10, 1, NewTestLogDB())
 		r.loadState(pb.State{Term: 1, Vote: tt.vote})
 
-		ne(r.Handle(pb.Message{From: tt.nvote, To: 1, Term: 1, Type: pb.RequestVote}), t)
+		ne(t, r.Handle(pb.Message{From: tt.nvote, To: 1, Term: 1, Type: pb.RequestVote}))
 
 		msgs := r.readMessages()
 		wmsgs := []pb.Message{
@@ -283,12 +285,12 @@ func TestCandidateFallback(t *testing.T) {
 	}
 	for i, tt := range tests {
 		r := newTestRaft(1, []uint64{1, 2, 3}, 10, 1, NewTestLogDB())
-		ne(r.Handle(pb.Message{From: 1, To: 1, Type: pb.Election}), t)
+		ne(t, r.Handle(pb.Message{From: 1, To: 1, Type: pb.Election}))
 		if r.state != candidate {
 			t.Fatalf("unexpected state = %s, want %s", r.state, candidate)
 		}
 
-		ne(r.Handle(tt), t)
+		ne(t, r.Handle(tt))
 
 		if g := r.state; g != follower {
 			t.Errorf("#%d: state = %s, want %s", i, g, follower)
@@ -300,15 +302,15 @@ func TestCandidateFallback(t *testing.T) {
 }
 
 func TestFollowerElectionTimeoutRandomized(t *testing.T) {
-	//SetLogger(discardLogger)
-	//defer SetLogger(defaultLogger)
+	// SetLogger(discardLogger)
+	// defer SetLogger(defaultLogger)
 	plog.SetLevel(logger.WARNING)
 	defer plog.SetLevel(logger.INFO)
 	testNonleaderElectionTimeoutRandomized(t, follower)
 }
 func TestCandidateElectionTimeoutRandomized(t *testing.T) {
-	//SetLogger(discardLogger)
-	//defer SetLogger(defaultLogger)
+	// SetLogger(discardLogger)
+	// defer SetLogger(defaultLogger)
 	plog.SetLevel(logger.WARNING)
 	defer plog.SetLevel(logger.INFO)
 	testNonleaderElectionTimeoutRandomized(t, candidate)
@@ -318,10 +320,11 @@ func TestCandidateElectionTimeoutRandomized(t *testing.T) {
 // follower or candidate is randomized.
 // Reference: section 5.2
 func testNonleaderElectionTimeoutRandomized(t *testing.T, state State) {
+	t.Helper()
 	et := 10
 	r := newTestRaft(1, []uint64{1, 2, 3}, et, 1, NewTestLogDB())
 	timeouts := make(map[int]bool)
-	for round := 0; round < 50*et; round++ {
+	for range 50 * et {
 		switch state {
 		case follower:
 			r.becomeFollower(r.term+1, 2)
@@ -331,7 +334,7 @@ func testNonleaderElectionTimeoutRandomized(t *testing.T, state State) {
 
 		time := 0
 		for len(r.readMessages()) == 0 {
-			ne(r.tick(), t)
+			ne(t, r.tick())
 			time++
 		}
 		timeouts[time] = true
@@ -345,15 +348,15 @@ func testNonleaderElectionTimeoutRandomized(t *testing.T, state State) {
 }
 
 func TestFollowersElectioinTimeoutNonconflict(t *testing.T) {
-	//SetLogger(discardLogger)
-	//defer SetLogger(defaultLogger)
+	// SetLogger(discardLogger)
+	// defer SetLogger(defaultLogger)
 	plog.SetLevel(logger.WARNING)
 	defer plog.SetLevel(logger.INFO)
 	testNonleadersElectionTimeoutNonconflict(t, follower)
 }
 func TestCandidatesElectionTimeoutNonconflict(t *testing.T) {
-	//SetLogger(discardLogger)
-	//defer SetLogger(defaultLogger)
+	// SetLogger(discardLogger)
+	// defer SetLogger(defaultLogger)
 	plog.SetLevel(logger.WARNING)
 	defer plog.SetLevel(logger.INFO)
 	testNonleadersElectionTimeoutNonconflict(t, candidate)
@@ -364,6 +367,7 @@ func TestCandidatesElectionTimeoutNonconflict(t *testing.T) {
 // likelihood of split vote in the new election.
 // Reference: section 5.2
 func testNonleadersElectionTimeoutNonconflict(t *testing.T, state State) {
+	t.Helper()
 	et := 10
 	size := 5
 	rs := make([]*raft, size)
@@ -385,7 +389,7 @@ func testNonleadersElectionTimeoutNonconflict(t *testing.T, state State) {
 		timeoutNum := 0
 		for timeoutNum == 0 {
 			for _, r := range rs {
-				ne(r.tick(), t)
+				ne(t, r.tick())
 				if len(r.readMessages()) > 0 {
 					timeoutNum++
 				}
@@ -416,10 +420,10 @@ func TestLeaderCommitEntry(t *testing.T) {
 	r.becomeLeader()
 	commitNoopEntry(r, s)
 	li := r.log.lastIndex()
-	ne(r.Handle(pb.Message{From: 1, To: 1, Type: pb.Propose, Entries: []pb.Entry{{Cmd: []byte("some data")}}}), t)
+	ne(t, r.Handle(pb.Message{From: 1, To: 1, Type: pb.Propose, Entries: []pb.Entry{{Cmd: []byte("some data")}}}))
 
 	for _, m := range r.readMessages() {
-		ne(r.Handle(acceptAndReply(m)), t)
+		ne(t, r.Handle(acceptAndReply(m)))
 	}
 
 	if g := r.log.committed; g != li+1 {
@@ -474,11 +478,11 @@ func TestLeaderAcknowledgeCommit(t *testing.T) {
 		r.becomeLeader()
 		commitNoopEntry(r, s)
 		li := r.log.lastIndex()
-		ne(r.Handle(pb.Message{From: 1, To: 1, Type: pb.Propose, Entries: []pb.Entry{{Cmd: []byte("some data")}}}), t)
+		ne(t, r.Handle(pb.Message{From: 1, To: 1, Type: pb.Propose, Entries: []pb.Entry{{Cmd: []byte("some data")}}}))
 
 		for _, m := range r.readMessages() {
 			if tt.acceptors[m.To] {
-				ne(r.Handle(acceptAndReply(m)), t)
+				ne(t, r.Handle(acceptAndReply(m)))
 			}
 		}
 
@@ -509,14 +513,14 @@ func TestLeaderCommitPrecedingEntries(t *testing.T) {
 		r.loadState(pb.State{Term: 2})
 		r.becomeCandidate()
 		r.becomeLeader()
-		ne(r.Handle(pb.Message{From: 1, To: 1, Type: pb.Propose, Entries: []pb.Entry{{Cmd: []byte("some data")}}}), t)
+		ne(t, r.Handle(pb.Message{From: 1, To: 1, Type: pb.Propose, Entries: []pb.Entry{{Cmd: []byte("some data")}}}))
 
 		for _, m := range r.readMessages() {
-			ne(r.Handle(acceptAndReply(m)), t)
+			ne(t, r.Handle(acceptAndReply(m)))
 		}
 
 		li := uint64(len(tt))
-		wents := append(tt, pb.Entry{Term: 3, Index: li + 1}, pb.Entry{Term: 3, Index: li + 2, Cmd: []byte("some data")})
+		wents := append(slices.Clone(tt), pb.Entry{Term: 3, Index: li + 1}, pb.Entry{Term: 3, Index: li + 2, Cmd: []byte("some data")})
 		g, err := r.log.entriesToApply()
 		if err != nil {
 			t.Fatalf("unexpected error %v", err)
@@ -567,7 +571,7 @@ func TestFollowerCommitEntry(t *testing.T) {
 		r := newTestRaft(1, []uint64{1, 2, 3}, 10, 1, NewTestLogDB())
 		r.becomeFollower(1, 2)
 
-		ne(r.Handle(pb.Message{From: 2, To: 1, Type: pb.Replicate, Term: 1, Entries: tt.ents, Commit: tt.commit}), t)
+		ne(t, r.Handle(pb.Message{From: 2, To: 1, Type: pb.Replicate, Term: 1, Entries: tt.ents, Commit: tt.commit}))
 
 		if g := r.log.committed; g != tt.commit {
 			t.Errorf("#%d: committed = %d, want %d", i, g, tt.commit)
@@ -617,7 +621,7 @@ func TestFollowerCheckReplicate(t *testing.T) {
 		r.loadState(pb.State{Commit: 1})
 		r.becomeFollower(2, 2)
 
-		ne(r.Handle(pb.Message{From: 2, To: 1, Type: pb.Replicate, Term: 2, LogTerm: tt.term, LogIndex: tt.index}), t)
+		ne(t, r.Handle(pb.Message{From: 2, To: 1, Type: pb.Replicate, Term: 2, LogTerm: tt.term, LogIndex: tt.index}))
 
 		msgs := r.readMessages()
 		wmsgs := []pb.Message{
@@ -674,7 +678,7 @@ func TestFollowerAppendEntries(t *testing.T) {
 		r := newTestRaft(1, []uint64{1, 2, 3}, 10, 1, storage)
 		r.becomeFollower(2, 2)
 
-		ne(r.Handle(pb.Message{From: 2, To: 1, Type: pb.Replicate, Term: 2, LogTerm: tt.term, LogIndex: tt.index, Entries: tt.ents}), t)
+		ne(t, r.Handle(pb.Message{From: 2, To: 1, Type: pb.Replicate, Term: 2, LogTerm: tt.term, LogIndex: tt.index, Entries: tt.ents}))
 
 		if g := getAllEntries(r.log); !reflect.DeepEqual(g, tt.wents) {
 			t.Errorf("#%d: ents = %+v, want %+v", i, g, tt.wents)
@@ -780,13 +784,13 @@ func TestVoteRequest(t *testing.T) {
 	}
 	for j, tt := range tests {
 		r := newTestRaft(1, []uint64{1, 2, 3}, 10, 1, NewTestLogDB())
-		ne(r.Handle(pb.Message{
+		ne(t, r.Handle(pb.Message{
 			From: 2, To: 1, Type: pb.Replicate, Term: tt.wterm - 1, LogTerm: 0, LogIndex: 0, Entries: tt.ents,
-		}), t)
+		}))
 		r.readMessages()
 
 		for i := uint64(1); i < r.electionTimeout*2; i++ {
-			ne(r.nonLeaderTick(), t)
+			ne(t, r.nonLeaderTick())
 		}
 
 		msgs := r.readMessages()
@@ -846,7 +850,7 @@ func TestVoter(t *testing.T) {
 		}
 		r := newTestRaft(1, []uint64{1, 2}, 10, 1, storage)
 
-		ne(r.Handle(pb.Message{From: 2, To: 1, Type: pb.RequestVote, Term: 3, LogTerm: tt.logterm, LogIndex: tt.index}), t)
+		ne(t, r.Handle(pb.Message{From: 2, To: 1, Type: pb.RequestVote, Term: 3, LogTerm: tt.logterm, LogIndex: tt.index}))
 
 		msgs := r.readMessages()
 		if len(msgs) != 1 {
@@ -889,9 +893,9 @@ func TestLeaderOnlyCommitsLogFromCurrentTerm(t *testing.T) {
 		r.becomeLeader()
 		r.readMessages()
 		// propose a entry to current term
-		ne(r.Handle(pb.Message{From: 1, To: 1, Type: pb.Propose, Entries: []pb.Entry{{}}}), t)
+		ne(t, r.Handle(pb.Message{From: 1, To: 1, Type: pb.Propose, Entries: []pb.Entry{{}}}))
 
-		ne(r.Handle(pb.Message{From: 2, To: 1, Type: pb.ReplicateResp, Term: r.term, LogIndex: tt.index}), t)
+		ne(t, r.Handle(pb.Message{From: 2, To: 1, Type: pb.ReplicateResp, Term: r.term, LogIndex: tt.index}))
 		if r.log.committed != tt.wcommit {
 			t.Errorf("#%d: commit = %d, want %d", i, r.log.committed, tt.wcommit)
 		}
@@ -907,7 +911,7 @@ func TestLeaderStartReplication(t *testing.T) {
 	li := r.log.lastIndex()
 
 	ents := []pb.Entry{{Cmd: []byte("some data")}}
-	ne(r.Handle(pb.Message{From: 1, To: 1, Type: pb.Propose, Entries: ents}), t)
+	ne(t, r.Handle(pb.Message{From: 1, To: 1, Type: pb.Propose, Entries: ents}))
 	if g := r.log.lastIndex(); g != li+1 {
 		t.Errorf("lastIndex = %d, want %d", g, li+1)
 	}

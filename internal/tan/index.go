@@ -121,7 +121,8 @@ type indexEncoder struct {
 func (e indexEncoder) writeUvarint(u uint64) {
 	var buf [binary.MaxVarintLen64]byte
 	n := binary.PutUvarint(buf[:], u)
-	e.Write(buf[:n])
+	// bytes.Buffer.Write never fails
+	_, _ = e.Write(buf[:n])
 }
 
 // index is the index to raft entry records in the db

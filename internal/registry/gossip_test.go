@@ -27,8 +27,10 @@ import (
 )
 
 const (
-	testNodeHostID1 = "123e4567-e89b-12d3-a456-426614174000"
-	testNodeHostID2 = "123e4567-e89b-12d3-a456-426614174001"
+	testNodeHostID1    = "123e4567-e89b-12d3-a456-426614174000"
+	testNodeHostID2    = "123e4567-e89b-12d3-a456-426614174001"
+	testGossipAddress1 = "127.0.0.1:26001"
+	testGossipAddress2 = "127.0.0.1:26002"
 )
 
 func TestMeta(t *testing.T) {
@@ -61,8 +63,8 @@ func TestGossipRegistry(t *testing.T) {
 		RaftAddress: "localhost:27001",
 		Gossip: config.GossipConfig{
 			BindAddress:      "localhost:26001",
-			AdvertiseAddress: "127.0.0.1:26001",
-			Seed:             []string{"127.0.0.1:26002"},
+			AdvertiseAddress: testGossipAddress1,
+			Seed:             []string{testGossipAddress2},
 		},
 	}
 	r, err := NewGossipRegistry(nhid, nil, nhConfig, 1, id.IsNodeHostID)
@@ -98,8 +100,8 @@ func TestGossipManagerCanBeCreatedAndStopped(t *testing.T) {
 		RaftAddress: "localhost:27001",
 		Gossip: config.GossipConfig{
 			BindAddress:      "localhost:26001",
-			AdvertiseAddress: "127.0.0.1:26001",
-			Seed:             []string{"127.0.0.1:26002"},
+			AdvertiseAddress: testGossipAddress1,
+			Seed:             []string{testGossipAddress2},
 		},
 	}
 	m, err := newGossipManager(nhid, nil, nhConfig)
@@ -109,7 +111,7 @@ func TestGossipManagerCanBeCreatedAndStopped(t *testing.T) {
 		require.NoError(t, err)
 	}()
 	require.Equal(t, 1, m.numMembers())
-	require.Equal(t, "127.0.0.1:26001", m.advertiseAddress())
+	require.Equal(t, testGossipAddress1, m.advertiseAddress())
 	addr, ok := m.GetRaftAddress(nhid)
 	require.True(t, ok)
 	require.Equal(t, nhConfig.RaftAddress, addr)
@@ -125,8 +127,8 @@ func TestGossipManagerCanGossip(t *testing.T) {
 		},
 		Gossip: config.GossipConfig{
 			BindAddress:      "localhost:26001",
-			AdvertiseAddress: "127.0.0.1:26001",
-			Seed:             []string{"127.0.0.1:26002"},
+			AdvertiseAddress: testGossipAddress1,
+			Seed:             []string{testGossipAddress2},
 		},
 	}
 	nhid2 := testNodeHostID2
@@ -137,8 +139,8 @@ func TestGossipManagerCanGossip(t *testing.T) {
 		},
 		Gossip: config.GossipConfig{
 			BindAddress:      "localhost:26002",
-			AdvertiseAddress: "127.0.0.1:26002",
-			Seed:             []string{"127.0.0.1:26001"},
+			AdvertiseAddress: testGossipAddress2,
+			Seed:             []string{testGossipAddress1},
 		},
 	}
 	m1, err := newGossipManager(nhid1, nil, nhConfig1)

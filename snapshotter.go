@@ -307,10 +307,8 @@ func (s *snapshotter) processOrphans() error {
 			remove := false
 			if noss {
 				remove = true
-			} else {
-				if mrss.Index != ss.Index {
-					remove = true
-				}
+			} else if mrss.Index != ss.Index {
+				remove = true
 			}
 			if remove {
 				if err := s.remove(ss.Index); err != nil {

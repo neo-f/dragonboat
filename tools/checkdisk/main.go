@@ -244,7 +244,7 @@ func main() {
 	if *cpupprof {
 		f, err := os.Create("cpu.pprof")
 		if err != nil {
-			log.Fatal("could not create CPU profile: ", err)
+			panic(fmt.Sprintf("could not create CPU profile: %v", err))
 		}
 		defer func() {
 			if err := f.Close(); err != nil {
@@ -252,7 +252,7 @@ func main() {
 			}
 		}()
 		if err := pprof.StartCPUProfile(f); err != nil {
-			log.Fatal("could not start CPU profile: ", err)
+			panic(fmt.Sprintf("could not start CPU profile: %v", err))
 		}
 		defer pprof.StopCPUProfile()
 		log.Println("cpu profile will be saved into file cpu.pprof")
@@ -269,7 +269,7 @@ func main() {
 	stopper := syncutil.NewStopper()
 	results := make([]uint64, *clientcount)
 	if !*readonly {
-		for i := uint64(0); i < uint64(*clientcount); i++ {
+		for i := range uint64(*clientcount) {
 			workerID := i
 			stopper.RunWorker(func() {
 				shardID := (workerID % uint64(*shardcount)) + 1
@@ -285,7 +285,7 @@ func main() {
 						}
 						v := <-rs.ResultC()
 						if v.Completed() {
-							results[workerID] = results[workerID] + 1
+							results[workerID]++
 							rs.Release()
 						}
 					}
@@ -300,7 +300,7 @@ func main() {
 	}
 	reads := struct{ v atomic.Uint64 }{}
 	if *read || *readonly {
-		for i := uint64(0); i < uint64(*clientcount); i++ {
+		for i := range uint64(*clientcount) {
 			workerID := i
 			stopper.RunWorker(func() {
 				shardID := (workerID % uint64(*shardcount)) + 1
@@ -332,7 +332,7 @@ func main() {
 	stopper.Stop()
 	total := uint64(0)
 	for _, v := range results {
-		total = total + v
+		total += v
 	}
 	rv := reads.v.Load()
 	fmt.Printf("read %d, %d reads per second\n", rv, rv/uint64(*seconds))

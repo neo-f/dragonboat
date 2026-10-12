@@ -91,7 +91,7 @@ func (c *ConcurrentUpdate) Update(entries []sm.Entry) ([]sm.Entry, error) {
 
 // Lookup queries the state machine.
 func (c *ConcurrentUpdate) Lookup(query any) (any, error) {
-	st := time.Duration(rand.Uint64()%10) * time.Millisecond
+	st := time.Duration(rand.Uint64()%10) * time.Millisecond //nolint:gosec // non-cryptographic use: test jitter
 	time.Sleep(st)
 	result := make([]byte, 4)
 	v := c.val.Load()
@@ -140,7 +140,7 @@ func (c *TestSnapshot) Update(e sm.Entry) (sm.Result, error) {
 
 // Lookup queries the state machine.
 func (c *TestSnapshot) Lookup(query any) (any, error) {
-	return nil, nil
+	return nil, nil //nolint:nilnil // deliberate no-op test double
 }
 
 // SaveSnapshot saves the snapshot.
@@ -195,7 +195,7 @@ func (c *ConcurrentSnapshot) Lookup(query any) (any, error) {
 
 // PrepareSnapshot makes preparations for taking concurrent snapshot.
 func (c *ConcurrentSnapshot) PrepareSnapshot() (any, error) {
-	return nil, nil
+	return nil, nil //nolint:nilnil // deliberate no-op test double
 }
 
 // SaveSnapshot saves the snapshot.

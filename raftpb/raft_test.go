@@ -380,8 +380,8 @@ func isDifferentInstance(a, b []byte) bool {
 		return true // empty slices can't alias each other
 	}
 
-	aPtr := unsafe.Pointer(&a[0])
-	bPtr := unsafe.Pointer(&b[0])
+	aPtr := unsafe.Pointer(&a[0]) //nolint:gosec // intentional aliasing check in test, reviewed
+	bPtr := unsafe.Pointer(&b[0]) //nolint:gosec // intentional aliasing check in test, reviewed
 
 	return aPtr != bPtr
 }

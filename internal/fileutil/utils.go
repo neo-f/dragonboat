@@ -19,7 +19,7 @@ import (
 	"bytes"
 	"cmp"
 	"compress/bzip2"
-	"crypto/md5"
+	"crypto/md5" //nolint:gosec // used for data checksums, not security
 	"fmt"
 	"io"
 	"os"
@@ -181,7 +181,7 @@ func IsDirMarkedAsDeleted(dir string, fs vfs.IFS) (bool, error) {
 }
 
 func getHash(data []byte) []byte {
-	h := md5.New()
+	h := md5.New() //nolint:gosec // used for data checksums, not security
 	MustWrite(h, data)
 	s := h.Sum(nil)
 	return s[8:]
@@ -310,7 +310,7 @@ func ExtractTarBz2(bz2fn string, toDir string, fs vfs.IFS) (err error) {
 				defer func() {
 					err = firstError(err, nf.Close())
 				}()
-				_, err = io.Copy(nf, tarReader)
+				_, err = io.Copy(nf, tarReader) //nolint:gosec // extracting internally generated snapshot archive
 				return err
 			}(); err != nil {
 				return err

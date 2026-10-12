@@ -262,7 +262,7 @@ func (env *Env) loadNodeHostID() (*id.UUID, error) {
 		}
 		return &storedUUID, nil
 	}
-	return nil, nil
+	return nil, nil //nolint:nilnil // nil result means no NodeHostID has been stored yet
 }
 
 // SetNodeHostID sets the NodeHostID value recorded in Env. This is typically

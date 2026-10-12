@@ -420,7 +420,7 @@ func (t *TCP) Start() error {
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
-				if err == netutil.ErrListenerStopped {
+				if errors.Is(err, netutil.ErrListenerStopped) {
 					return
 				}
 				panic(err)
@@ -500,7 +500,8 @@ func (t *TCP) serveConn(conn net.Conn) {
 			if errors.Is(err, ErrBadMessage) {
 				return
 			}
-			operr, ok := err.(net.Error)
+			var operr net.Error
+			ok := errors.As(err, &operr)
 			if ok && operr.Timeout() {
 				continue
 			} else {
@@ -560,12 +561,13 @@ func (t *TCP) getConnection(ctx context.Context,
 		return nil, err
 	}
 	if tlsConfig != nil {
-		conn = tls.Client(conn, tlsConfig)
+		tlsConn := tls.Client(conn, tlsConfig)
+		conn = tlsConn
 		tt := time.Now().Add(tlsHandshackTimeout)
 		if err := conn.SetDeadline(tt); err != nil {
 			return nil, err
 		}
-		if err := conn.(*tls.Conn).Handshake(); err != nil {
+		if err := tlsConn.Handshake(); err != nil {
 			return nil, err
 		}
 	}

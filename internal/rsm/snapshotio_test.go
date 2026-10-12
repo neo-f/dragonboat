@@ -29,16 +29,19 @@ import (
 const (
 	testSessionSize uint64 = 16
 	testPayloadSize uint64 = 8
+	testF1DataPath         = "/d1/d2/f1.data"
 )
 
-func reportLeakedFD(fs vfs.IFS, t *testing.T) {
-	vfs.ReportLeakedFD(fs, t)
+func reportLeakedFD(t *testing.T, fs vfs.IFS) {
+	t.Helper()
+	vfs.ReportLeakedFD(t, fs)
 }
 
 // snapshotTestDir returns a per-test directory, creating it in fs first as
 // t.TempDir only creates the directory in the OS fs while tests may run on
 // an in-memory fs.
 func snapshotTestDir(t *testing.T, fs vfs.IFS) string {
+	t.Helper()
 	dir := t.TempDir()
 	require.NoError(t, fs.MkdirAll(dir, 0755))
 	return dir
@@ -84,11 +87,12 @@ func TestSaveHeaderSavesTheHeader(t *testing.T) {
 		storeChecksum := w.vw.GetPayloadSum()
 		require.True(t, bytes.Equal(header.PayloadChecksum, storeChecksum))
 	}()
-	reportLeakedFD(fs, t)
+	reportLeakedFD(t, fs)
 }
 
 func makeTestSnapshotFile(t *testing.T, ssz uint64,
 	psz uint64, v SSVersion, fn string, fs vfs.IFS) (*SnapshotWriter, []byte, []byte) {
+	t.Helper()
 	w, err := newVersionedSnapshotWriter(fn, v,
 		pb.NoCompression, fs)
 	require.NoError(t, err)
@@ -111,6 +115,7 @@ func makeTestSnapshotFile(t *testing.T, ssz uint64,
 }
 
 func corruptSnapshotPayload(t *testing.T, fn string, fs vfs.IFS) {
+	t.Helper()
 	tmpFp := fn + ".writing"
 	func() {
 		// upstream pebble memfs returns write-only files from ReuseForWrite,
@@ -125,7 +130,7 @@ func corruptSnapshotPayload(t *testing.T, fn string, fs vfs.IFS) {
 		data := make([]byte, 1)
 		_, err = f.ReadAt(data, int64(HeaderSize+s))
 		require.NoError(t, err)
-		data[0] = data[0] + 1
+		data[0]++
 		_, err = f.WriteAt(data, int64(HeaderSize+s))
 		require.NoError(t, err)
 	}()
@@ -136,10 +141,12 @@ func corruptSnapshotPayload(t *testing.T, fn string, fs vfs.IFS) {
 
 func createTestSnapshotFile(t *testing.T,
 	v SSVersion, fn string, fs vfs.IFS) (*SnapshotWriter, []byte, []byte) {
+	t.Helper()
 	return makeTestSnapshotFile(t, testSessionSize, testPayloadSize, v, fn, fs)
 }
 
 func testCorruptedPayloadWillBeDetected(t *testing.T, v SSVersion, fs vfs.IFS) {
+	t.Helper()
 	fp := fs.PathJoin(snapshotTestDir(t, fs), "testsnapshot.tmp")
 	func() {
 		createTestSnapshotFile(t, v, fp, fs)
@@ -163,7 +170,7 @@ func testCorruptedPayloadWillBeDetected(t *testing.T, v SSVersion, fs vfs.IFS) {
 			r.validatePayload()
 		})
 	}()
-	reportLeakedFD(fs, t)
+	reportLeakedFD(t, fs)
 }
 
 func TestCorruptedPayloadWillBeDetected(t *testing.T) {
@@ -173,6 +180,7 @@ func TestCorruptedPayloadWillBeDetected(t *testing.T) {
 }
 
 func testNormalSnapshotCanPassValidation(t *testing.T, v SSVersion, fs vfs.IFS) {
+	t.Helper()
 	fp := fs.PathJoin(snapshotTestDir(t, fs), "testsnapshot.tmp")
 	func() {
 		_, sessionData, storeData := createTestSnapshotFile(t, v, fp, fs)
@@ -195,7 +203,7 @@ func testNormalSnapshotCanPassValidation(t *testing.T, v SSVersion, fs vfs.IFS) 
 		require.True(t, bytes.Equal(sessionData, s))
 		require.True(t, bytes.Equal(storeData, p))
 	}()
-	reportLeakedFD(fs, t)
+	reportLeakedFD(t, fs)
 }
 
 func TestNormalSnapshotCanPassValidation(t *testing.T) {
@@ -223,6 +231,7 @@ func readTestSnapshot(fn string, sz uint64, fs vfs.IFS) ([]byte, error) {
 }
 
 func testSingleBlockSnapshotValidation(t *testing.T, sv SSVersion, fs vfs.IFS) {
+	t.Helper()
 	fp := fs.PathJoin(snapshotTestDir(t, fs), "testsnapshot.tmp")
 	createTestSnapshotFile(t, sv, fp, fs)
 	data, err := readTestSnapshot(fp, 1024*1024, fs)
@@ -236,7 +245,7 @@ func testSingleBlockSnapshotValidation(t *testing.T, sv SSVersion, fs vfs.IFS) {
 	v = NewSnapshotValidator()
 	require.True(t, v.AddChunk(data, 0))
 	require.False(t, v.Validate())
-	reportLeakedFD(fs, t)
+	reportLeakedFD(t, fs)
 }
 
 func TestSingleBlockSnapshotValidation(t *testing.T) {
@@ -246,6 +255,7 @@ func TestSingleBlockSnapshotValidation(t *testing.T) {
 }
 
 func testMultiBlockSnapshotValidation(t *testing.T, sv SSVersion, fs vfs.IFS) {
+	t.Helper()
 	fp := fs.PathJoin(snapshotTestDir(t, fs), "testsnapshot.tmp")
 	makeTestSnapshotFile(t, 1024*1024, 1024*1024*8, sv, fp, fs)
 	data, err := readTestSnapshot(fp, 1024*1024*10, fs)
@@ -261,7 +271,7 @@ func testMultiBlockSnapshotValidation(t *testing.T, sv SSVersion, fs vfs.IFS) {
 	require.True(t, v.AddChunk(c1, 0))
 	require.True(t, v.AddChunk(c2, 1))
 	require.False(t, v.Validate())
-	reportLeakedFD(fs, t)
+	reportLeakedFD(t, fs)
 }
 
 func TestMultiBlockSnapshotValidation(t *testing.T) {
@@ -277,12 +287,12 @@ func TestMustInSameDir(t *testing.T) {
 		path2   string
 		sameDir bool
 	}{
-		{"/d1/d2/f1.data", "/d1/d2/f2.data", true},
-		{"/d1/d2/f1.data", "/d1/d3/f2.data", false},
-		{"/d1/d2/f1.data", "/d1/d2/d3/f2.data", false},
-		{"/d1/d2/f1.data", "f2.data", false},
-		{"/d1/d2/f1.data", "/d2/f2.data", false},
-		{"/d1/d2/f1.data", "d2/f2.data", false},
+		{testF1DataPath, "/d1/d2/f2.data", true},
+		{testF1DataPath, "/d1/d3/f2.data", false},
+		{testF1DataPath, "/d1/d2/d3/f2.data", false},
+		{testF1DataPath, "f2.data", false},
+		{testF1DataPath, "/d2/f2.data", false},
+		{testF1DataPath, "d2/f2.data", false},
 	}
 	for _, tt := range tests {
 		func() {
@@ -337,7 +347,7 @@ func TestShrinkSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	err = reader.Close()
 	require.NoError(t, err)
-	reportLeakedFD(fs, t)
+	reportLeakedFD(t, fs)
 }
 
 func TestReplaceSnapshotFile(t *testing.T) {
@@ -368,6 +378,7 @@ func TestReplaceSnapshotFile(t *testing.T) {
 }
 
 func testV2PayloadChecksumCanBeRead(t *testing.T, sz uint64, fs vfs.IFS) {
+	t.Helper()
 	fp := fs.PathJoin(snapshotTestDir(t, fs), "testsnapshot.tmp")
 	func() {
 		makeTestSnapshotFile(t, 0, sz, V2, fp, fs)
@@ -380,7 +391,7 @@ func testV2PayloadChecksumCanBeRead(t *testing.T, sz uint64, fs vfs.IFS) {
 		require.NoError(t, err)
 		require.True(t, bytes.Equal(crc, header.PayloadChecksum))
 	}()
-	reportLeakedFD(fs, t)
+	reportLeakedFD(t, fs)
 }
 
 func TestV2PayloadChecksumCanBeRead(t *testing.T) {
@@ -424,11 +435,11 @@ func TestV1SnapshotCanBeLoaded(t *testing.T) {
 	r1, ok := s1.History[5]
 	require.True(t, ok)
 	require.Equal(t, uint64(128), r1.Value)
-	require.Equal(t, 1, len(s1.History))
+	require.Len(t, s1.History, 1)
 	r2, ok := s2.History[3]
 	require.True(t, ok)
 	require.Equal(t, uint64(128), r2.Value)
-	require.Equal(t, 1, len(s2.History))
+	require.Len(t, s2.History, 1)
 	data := make([]byte, 11)
 	_, err = io.ReadFull(reader, data)
 	require.NoError(t, err)
@@ -443,7 +454,7 @@ func TestValidateHeader(t *testing.T) {
 	require.NoError(t, err)
 	crc := h.Sum(nil)
 	require.True(t, validateHeader(data, crc))
-	crc[0] = crc[0] + 1
+	crc[0]++
 	require.False(t, validateHeader(data, crc))
 }
 

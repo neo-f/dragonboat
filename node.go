@@ -208,11 +208,11 @@ func newNode(peers map[uint64]string,
 	rn.sm = sm
 	rn.raftEvents = newRaftEventListener(config.ShardID,
 		config.ReplicaID, nhConfig.EnableMetrics, liQueue)
-	new, err := rn.startRaft(config, peers, initialMember)
+	nr, err := rn.startRaft(config, peers, initialMember)
 	if err != nil {
 		return nil, err
 	}
-	rn.new = new
+	rn.new = nr
 	return rn, nil
 }
 
@@ -500,11 +500,9 @@ func (n *node) requestSnapshot(opt SnapshotOption,
 		if !exist {
 			return nil, ErrDirNotExist
 		}
-	} else {
-		if len(opt.ExportPath) > 0 {
-			plog.Warningf("opt.ExportPath set when not exporting a snapshot")
-			opt.ExportPath = ""
-		}
+	} else if len(opt.ExportPath) > 0 {
+		plog.Warningf("opt.ExportPath set when not exporting a snapshot")
+		opt.ExportPath = ""
 	}
 	return n.pendingSnapshot.request(st,
 		opt.ExportPath,
@@ -575,7 +573,7 @@ func (n *node) getLeaderID() (uint64, uint64, bool) {
 	if lv == nil {
 		return 0, 0, false
 	}
-	leaderInfo := lv.(*leaderInfo)
+	leaderInfo, _ := lv.(*leaderInfo)
 	return leaderInfo.leaderID, leaderInfo.term, leaderInfo.leaderID != raft.NoLeader
 }
 
@@ -942,7 +940,7 @@ func (n *node) removeLog() error {
 			panic("racy compact log to value?")
 		}
 		if err := n.logReader.Compact(compactTo); err != nil {
-			if err != raft.ErrCompacted {
+			if !errors.Is(err, raft.ErrCompacted) {
 				return err
 			}
 		}
@@ -960,7 +958,7 @@ func (n *node) removeLog() error {
 		})
 		if !n.config.DisableAutoCompactions {
 			if _, err := n.requestCompaction(); err != nil {
-				if err != ErrRejected {
+				if !errors.Is(err, ErrRejected) {
 					return errors.Wrapf(err, "%s failed to request compaction", n.id())
 				}
 			}
@@ -1619,13 +1617,13 @@ func (n *node) getShardInfo() ShardInfo {
 			StateMachineType: sm.Type(n.sm.Type()),
 		}
 	}
-	info := v.(*ShardInfo)
+	info, _ := v.(*ShardInfo)
 
 	leaderID := uint64(0)
 	term := uint64(0)
 	lv := n.leaderInfo.Load()
 	if lv != nil {
-		leaderInfo := lv.(*leaderInfo)
+		leaderInfo, _ := lv.(*leaderInfo)
 		leaderID = leaderInfo.leaderID
 		term = leaderInfo.term
 	}
@@ -1663,7 +1661,7 @@ func (n *node) isLeader() bool {
 	if v == nil {
 		return false
 	}
-	leaderInfo := v.(*leaderInfo)
+	leaderInfo, _ := v.(*leaderInfo)
 	if leaderInfo.term == 0 {
 		return false
 	}
@@ -1675,7 +1673,7 @@ func (n *node) isFollower() bool {
 	if v == nil {
 		return false
 	}
-	leaderInfo := v.(*leaderInfo)
+	leaderInfo, _ := v.(*leaderInfo)
 	if leaderInfo.term == 0 {
 		return false
 	}

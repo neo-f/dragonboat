@@ -18,6 +18,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/neo-f/dragonboat/v4/internal/server"
 	pb "github.com/neo-f/dragonboat/v4/raftpb"
 )
@@ -67,7 +68,7 @@ func TestLogWithInMemSnapshotOnly(t *testing.T) {
 	}
 	for i := range uint64(110) {
 		ents, err := el.getEntries(i, i+1, math.MaxUint64)
-		if err != ErrCompacted {
+		if !errors.Is(err, ErrCompacted) {
 			t.Errorf("unexpected err %v", err)
 		}
 		if len(ents) != 0 {

@@ -35,7 +35,10 @@ import (
 	pb "github.com/neo-f/dragonboat/v4/raftpb"
 )
 
+const testDBDir = "db-dir"
+
 func runTanTest(t *testing.T, opts *Options, tf func(t *testing.T, d *db), fs vfs.FS) {
+	t.Helper()
 	defer leaktest.AfterTest(t)()
 	if opts == nil {
 		opts = &Options{
@@ -46,7 +49,7 @@ func runTanTest(t *testing.T, opts *Options, tf func(t *testing.T, d *db), fs vf
 	} else if opts.FS == nil {
 		panic("fs not specified")
 	}
-	defer dvfs.ReportLeakedFD(opts.FS, t)
+	defer dvfs.ReportLeakedFD(t, opts.FS)
 	dirname := "/Users/lni/db-dir"
 	require.NoError(t, fileutil.MkdirAll(dirname, opts.FS))
 	db, err := open(dirname, dirname, opts)
@@ -60,6 +63,7 @@ func runTanTest(t *testing.T, opts *Options, tf func(t *testing.T, d *db), fs vf
 func TestOpenNewDB(t *testing.T) {
 	fs := dvfs.NewMemFS()
 	tf := func(t *testing.T, db *db) {
+		t.Helper()
 		rs, err := db.getRaftState(2, 3, 200)
 		require.Equal(t, raftio.ErrNoSavedLog, err)
 		require.Equal(t, raftio.RaftState{}, rs)
@@ -71,7 +75,7 @@ func TestOpenNewDB(t *testing.T) {
 		var entries []pb.Entry
 		entries, size, err := db.getEntries(2, 3, entries, 0, 0, 100, math.MaxUint64)
 		require.NoError(t, err)
-		require.Equal(t, 0, len(entries))
+		require.Empty(t, entries)
 		require.Equal(t, uint64(0), size)
 	}
 	runTanTest(t, nil, tf, fs)
@@ -82,6 +86,7 @@ func TestBasicDBReadWrite(t *testing.T) {
 		size := testSize
 		fs := dvfs.NewMemFS()
 		tf := func(t *testing.T, db *db) {
+			t.Helper()
 			var cmd []byte
 			if size > 0 {
 				cmd = make([]byte, size)
@@ -138,7 +143,7 @@ func TestBasicDBReadWrite(t *testing.T) {
 			var result []pb.Entry
 			entries, _, err := db.getEntries(2, 3, result, 0, 201, 203, math.MaxUint64)
 			require.NoError(t, err)
-			require.Equal(t, 2, len(entries))
+			require.Len(t, entries, 2)
 			require.Equal(t, size, uint64(len(entries[0].Cmd)))
 		}
 		runTanTest(t, nil, tf, fs)
@@ -204,6 +209,7 @@ func TestEntryOverwrite(t *testing.T) {
 		func() {
 			fs := dvfs.NewMemFS()
 			tf := func(t *testing.T, db *db) {
+				t.Helper()
 				for _, ir := range input {
 					u := pb.Update{ShardID: 2, ReplicaID: 3}
 					for j := ir.start; j <= ir.end; j++ {
@@ -216,10 +222,11 @@ func TestEntryOverwrite(t *testing.T) {
 			runTanTest(t, nil, tf, fs)
 
 			tf = func(t *testing.T, db *db) {
+				t.Helper()
 				var result []pb.Entry
 				entries, _, err := db.getEntries(2, 3, result, 0, low, high, 1024)
 				require.NoError(t, err)
-				require.Equal(t, len(expected), len(entries))
+				require.Len(t, entries, len(expected))
 				for j, r := range expected {
 					require.Equalf(t, r.index, entries[j].Index, "idx: %d, j: %d", idx, j)
 					require.Equalf(t, r.term, entries[j].Term, "idx: %d, j: %d", idx, j)
@@ -233,6 +240,7 @@ func TestEntryOverwrite(t *testing.T) {
 func TestEmptyEntryUpdate(t *testing.T) {
 	fs := dvfs.NewMemFS()
 	tf := func(t *testing.T, db *db) {
+		t.Helper()
 		u1 := pb.Update{
 			ShardID:   2,
 			ReplicaID: 3,
@@ -273,7 +281,7 @@ func TestEmptyEntryUpdate(t *testing.T) {
 		var result []pb.Entry
 		entries, _, err := db.getEntries(2, 3, result, 0, 1, 3, 10240)
 		require.NoError(t, err)
-		require.Equal(t, 2, len(entries))
+		require.Len(t, entries, 2)
 	}
 	runTanTest(t, nil, tf, fs)
 }
@@ -281,6 +289,7 @@ func TestEmptyEntryUpdate(t *testing.T) {
 func TestSnapshotUpdate(t *testing.T) {
 	fs := dvfs.NewMemFS()
 	tf := func(t *testing.T, db *db) {
+		t.Helper()
 		u1 := pb.Update{
 			ShardID:   2,
 			ReplicaID: 3,
@@ -327,6 +336,7 @@ func TestLogRotation(t *testing.T) {
 		FS:                  fs,
 	}
 	tf := func(t *testing.T, db *db) {
+		t.Helper()
 		logNum := db.mu.logNum
 		fn := makeFilename(opts.FS, db.dirname, fileTypeLog, logNum)
 		_, err := opts.FS.Stat(fn)
@@ -359,7 +369,7 @@ func TestLogRotation(t *testing.T) {
 		var result []pb.Entry
 		entries, _, err := db.getEntries(2, 3, result, 0, 1, 100, math.MaxUint64)
 		require.NoError(t, err)
-		require.Equal(t, 99, len(entries))
+		require.Len(t, entries, 99)
 		for i := uint64(1); i < uint64(100); i++ {
 			require.Equal(t, i, entries[i-1].Index)
 		}
@@ -380,6 +390,7 @@ func TestDBRestart(t *testing.T) {
 	}
 	var logNum fileNum
 	tf := func(t *testing.T, db *db) {
+		t.Helper()
 		u := pb.Update{
 			ShardID:   2,
 			ReplicaID: 3,
@@ -401,6 +412,7 @@ func TestDBRestart(t *testing.T) {
 	runTanTest(t, opts, tf, fs)
 
 	tf = func(t *testing.T, db *db) {
+		t.Helper()
 		require.NotEqual(t, logNum, db.mu.logNum)
 		// this will write an entry with index 100 term 6
 		// query should return this entry
@@ -424,7 +436,7 @@ func TestDBRestart(t *testing.T) {
 		var result []pb.Entry
 		entries, _, err := db.getEntries(2, 3, result, 0, 1, 100, math.MaxUint64)
 		require.NoError(t, err)
-		require.Equal(t, 99, len(entries))
+		require.Len(t, entries, 99)
 		for i := uint64(1); i < uint64(100); i++ {
 			require.Equal(t, i, entries[i-1].Index)
 		}
@@ -445,13 +457,13 @@ func TestDBRestart(t *testing.T) {
 func TestDBConcurrentAccess(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	fs := dvfs.NewMemFS()
-	defer dvfs.ReportLeakedFD(fs, t)
+	defer dvfs.ReportLeakedFD(t, fs)
 	opts := &Options{
 		MaxLogFileSize:      1,
 		MaxManifestFileSize: MaxManifestFileSize,
 		FS:                  fs,
 	}
-	dirname := "db-dir"
+	dirname := testDBDir
 	require.NoError(t, fs.MkdirAll(dirname, 0700))
 	db, err := open(dirname, dirname, opts)
 	require.NoError(t, err)
@@ -486,7 +498,7 @@ func TestDBConcurrentAccess(t *testing.T) {
 				require.NoError(t, db.removeAll(2, 3))
 			} else if i%uint64(11) == 0 {
 				if err := db.removeEntries(2, 3, i); err != nil {
-					if err != ErrNoState {
+					if !errors.Is(err, ErrNoState) {
 						t.Errorf("failed to remove entries %v", err)
 					}
 				}
@@ -529,6 +541,7 @@ func TestDBIndexIsSavedOnClose(t *testing.T) {
 	var index []indexEntry
 	var dirname string
 	tf := func(t *testing.T, db *db) {
+		t.Helper()
 		buf := make([]byte, 1024)
 		for i := uint64(1); i <= uint64(10); i++ {
 			u := pb.Update{
@@ -549,7 +562,7 @@ func TestDBIndexIsSavedOnClose(t *testing.T) {
 	fn := makeFilename(fs, dirname, fileTypeIndex, logNum)
 	_, err := fs.Stat(fn)
 	require.NoError(t, err)
-	require.True(t, len(index) > 0)
+	require.NotEmpty(t, index)
 }
 
 func TestRebuildIndex(t *testing.T) {
@@ -559,6 +572,7 @@ func TestRebuildIndex(t *testing.T) {
 	var snapshot indexEntry
 	var dirname string
 	tf := func(t *testing.T, db *db) {
+		t.Helper()
 		dirname = db.dirname
 		buf := make([]byte, 1024)
 		for i := uint64(1); i <= uint64(1000); i++ {
@@ -584,6 +598,7 @@ func TestRebuildIndex(t *testing.T) {
 	require.NoError(t, fs.RemoveAll(fn))
 
 	tf = func(t *testing.T, db *db) {
+		t.Helper()
 		require.Equal(t, savedIndex, db.mu.nodeStates.getIndex(2, 3).entries)
 		require.Equal(t, snapshot, db.mu.nodeStates.getIndex(2, 3).snapshot)
 		require.Equal(t, uint64(500), db.mu.nodeStates.compactedTo(2, 3))
@@ -594,12 +609,12 @@ func TestRebuildIndex(t *testing.T) {
 func TestRebuildLog(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	fs := vfs.Default
-	defer dvfs.ReportLeakedFD(fs, t)
+	defer dvfs.ReportLeakedFD(t, fs)
 	opts := &Options{
 		MaxManifestFileSize: MaxManifestFileSize,
 		FS:                  fs,
 	}
-	dirname := "db-dir"
+	dirname := testDBDir
 	require.NoError(t, fs.RemoveAll(dirname))
 	require.NoError(t, fs.MkdirAll(dirname, 0700))
 	defer func() {
@@ -623,7 +638,7 @@ func TestRebuildLog(t *testing.T) {
 	require.NoError(t, db.close())
 	logFn := makeFilename(fs, dirname, fileTypeLog, logNum)
 	idxFn := makeFilename(fs, dirname, fileTypeIndex, logNum)
-	lf, err := os.OpenFile(logFn, os.O_RDWR, 0755)
+	lf, err := os.OpenFile(logFn, os.O_RDWR, 0755) //nolint:gosec // test-constructed path
 	require.NoError(t, err)
 	fi, err := lf.Stat()
 	require.NoError(t, err)
@@ -636,10 +651,10 @@ func TestRebuildLog(t *testing.T) {
 	var result []pb.Entry
 	result, _, err = db.getEntries(2, 3, result, 0, 1, 21, math.MaxUint64)
 	require.NoError(t, err)
-	require.Equal(t, 19, len(result))
+	require.Len(t, result, 19)
 	require.Equal(t, uint64(19), result[len(result)-1].Index)
 	require.NoError(t, db.close())
-	lf, err = os.Open(logFn)
+	lf, err = os.Open(logFn) //nolint:gosec // test-constructed path
 	require.NoError(t, err)
 	fi2, err := lf.Stat()
 	require.NoError(t, err)
@@ -654,6 +669,7 @@ func TestGetEntriesWithMaxSize(t *testing.T) {
 		FS:                  fs,
 	}
 	tf := func(t *testing.T, db *db) {
+		t.Helper()
 		cmd := make([]byte, 128)
 		buf := make([]byte, 1024)
 		for i := range 128 {
@@ -669,7 +685,7 @@ func TestGetEntriesWithMaxSize(t *testing.T) {
 		}
 		entries, _, err := db.getEntries(2, 3, nil, 0, 1, 128, 128)
 		require.NoError(t, err)
-		require.Equal(t, 1, len(entries))
+		require.Len(t, entries, 1)
 	}
 	runTanTest(t, opts, tf, fs)
 }

@@ -41,11 +41,13 @@ func ExampleNodeHostConfig() {
 }
 
 func checkValidAddress(t *testing.T, addr string) {
+	t.Helper()
 	assert.True(t, IsValidAddress(addr),
 		"valid addr %s considreed as invalid", addr)
 }
 
 func checkInvalidAddress(t *testing.T, addr string) {
+	t.Helper()
 	assert.False(t, IsValidAddress(addr),
 		"invalid addr %s considered as valid", addr)
 }
@@ -160,7 +162,7 @@ func TestTransportFactoryAndModuleCanNotBeSetTogether(t *testing.T) {
 func TestLogDBFactoryAndExpertLogDBFactoryCanNotBeSetTogether(t *testing.T) {
 	f := func(NodeHostConfig,
 		LogDBCallback, []string, []string) (raftio.ILogDB, error) {
-		return nil, nil
+		return nil, nil //nolint:nilnil // test stub factory intentionally returns no instance
 	}
 	c := NodeHostConfig{
 		RaftAddress:    "localhost:9010",
@@ -219,6 +221,13 @@ func TestGossipConfigIsEmtpy(t *testing.T) {
 	}
 }
 
+const (
+	testGossipMyHostAddr    = "myhost.com:12345"
+	testGossipSeedAddr1     = "128.0.0.1:1234"
+	testGossipSeedAddr2     = "128.0.0.1:12345"
+	testGossipAdvertiseAddr = "202.23.45.1:12345"
+)
+
 func TestGossipConfigValidate(t *testing.T) {
 	tests := []struct {
 		bindAddr      string
@@ -226,31 +235,31 @@ func TestGossipConfigValidate(t *testing.T) {
 		seed          []string
 		valid         bool
 	}{
-		{"114.1.1.1:12345", "202.23.45.1:12345", []string{"128.0.0.1:1234"}, true},
-		{"myhost.com:12345", "202.23.45.1:12345", []string{"128.0.0.1:1234"}, true},
-		{"myhost.com:12345", "", []string{"128.0.0.1:1234"}, true},
-		{"", "202.23.45.1:12345", []string{"128.0.0.1:1234"}, false},
-		{"myhost.com", "202.23.45.1:12345", []string{"128.0.0.1:1234"}, false},
-		{"myhost.com:12345", "myhost2.net:12345", []string{"128.0.0.1:1234"}, false},
-		{"myhost.com:12345", "202.23.45.1:12345", []string{}, false},
-		{"myhost.com:12345", "202.23.45.1:12345", []string{"myhost.com:12345"}, false},
-		{"myhost.com:12345", "202.23.45.1:12345", []string{"202.23.45.1:12345"}, false},
-		{"myhost.com:12345", "202.23.45.1", []string{"128.0.0.1:1234"}, false},
-		{"myhost.com:12345", "202.23.45.1:12345", []string{"128.0.0.1"}, false},
-		{"myhost.com:12345", ":12345", []string{"128.0.0.1:12345"}, false},
+		{"114.1.1.1:12345", testGossipAdvertiseAddr, []string{testGossipSeedAddr1}, true},
+		{testGossipMyHostAddr, testGossipAdvertiseAddr, []string{testGossipSeedAddr1}, true},
+		{testGossipMyHostAddr, "", []string{testGossipSeedAddr1}, true},
+		{"", testGossipAdvertiseAddr, []string{testGossipSeedAddr1}, false},
+		{"myhost.com", testGossipAdvertiseAddr, []string{testGossipSeedAddr1}, false},
+		{testGossipMyHostAddr, "myhost2.net:12345", []string{testGossipSeedAddr1}, false},
+		{testGossipMyHostAddr, testGossipAdvertiseAddr, []string{}, false},
+		{testGossipMyHostAddr, testGossipAdvertiseAddr, []string{testGossipMyHostAddr}, false},
+		{testGossipMyHostAddr, testGossipAdvertiseAddr, []string{testGossipAdvertiseAddr}, false},
+		{testGossipMyHostAddr, "202.23.45.1", []string{testGossipSeedAddr1}, false},
+		{testGossipMyHostAddr, testGossipAdvertiseAddr, []string{"128.0.0.1"}, false},
+		{testGossipMyHostAddr, ":12345", []string{testGossipSeedAddr2}, false},
 		// FIXME:
 		// current validator consider this as valid
-		// {"300.0.0.1:12345", "202.23.45.1:12345", []string{"128.0.0.1:12345"}, false},
-		{"myhost.com:66345", "202.23.45.1:12345", []string{"128.0.0.1:12345"}, false},
-		{"myhost.com:12345", "302.23.45.1:12345", []string{"128.0.0.1:12345"}, false},
-		{"myhost.com:12345", "202.23.45.1:72345", []string{"128.0.0.1:12345"}, false},
+		// {"300.0.0.1:12345", testGossipAdvertiseAddr, []string{testGossipSeedAddr2}, false},
+		{"myhost.com:66345", testGossipAdvertiseAddr, []string{testGossipSeedAddr2}, false},
+		{testGossipMyHostAddr, "302.23.45.1:12345", []string{testGossipSeedAddr2}, false},
+		{testGossipMyHostAddr, "202.23.45.1:72345", []string{testGossipSeedAddr2}, false},
 		// FIXME:
 		// current validator consider this as valid
-		// {"myhost.com:12345", "202.23.45.1:12345", []string{"328.0.0.1:12345"}, false},
-		{"myhost.com:12345", "202.23.45.1:12345", []string{"128.0.0.1:65536"}, false},
-		{"myhost.com:12345", "202.23.45.1:12345", []string{"128.0.0.1::12345"}, false},
-		{"myhost.com:12345", "202.23.45.1::12345", []string{"128.0.0.1:12345"}, false},
-		{"myhost.com::12345", "202.23.45.1:12345", []string{"128.0.0.1:12345"}, false},
+		// {testGossipMyHostAddr, testGossipAdvertiseAddr, []string{"328.0.0.1:12345"}, false},
+		{testGossipMyHostAddr, testGossipAdvertiseAddr, []string{"128.0.0.1:65536"}, false},
+		{testGossipMyHostAddr, testGossipAdvertiseAddr, []string{"128.0.0.1::12345"}, false},
+		{testGossipMyHostAddr, "202.23.45.1::12345", []string{testGossipSeedAddr2}, false},
+		{"myhost.com::12345", testGossipAdvertiseAddr, []string{testGossipSeedAddr2}, false},
 		{"node1:12345", "202.96.23.1:12345", []string{"node3:12345", "node4:12345"}, true},
 	}
 	for idx, tt := range tests {

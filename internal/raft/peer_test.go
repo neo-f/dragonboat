@@ -38,12 +38,14 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/neo-f/dragonboat/v4/config"
 	pb "github.com/neo-f/dragonboat/v4/raftpb"
 )
 
-func ne(err error, t *testing.T) {
+func ne(t *testing.T, err error) {
+	t.Helper()
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
@@ -78,7 +80,7 @@ func TestRaftAPINodeStep(t *testing.T) {
 		// stepping on non-local messages should be fine
 		if !isLocalMessageType(msgt) &&
 			msgt != pb.SnapshotReceived && msgt != pb.TimeoutNow {
-			ne(rawNode.Handle(pb.Message{Type: msgt, Term: rawNode.raft.term}), t)
+			ne(t, rawNode.Handle(pb.Message{Type: msgt, Term: rawNode.raft.term}))
 		}
 	}
 }
@@ -86,18 +88,18 @@ func TestRaftAPINodeStep(t *testing.T) {
 func TestRaftAPIRequestLeaderTransfer(t *testing.T) {
 	s := NewTestLogDB()
 	p := Launch(newTestConfig(1, 10, 1), s, nil, []PeerAddress{{ReplicaID: 1}}, true, true)
-	ne(p.RequestLeaderTransfer(1), t)
+	ne(t, p.RequestLeaderTransfer(1))
 }
 
 func TestRaftAPIRTT(t *testing.T) {
 	s := NewTestLogDB()
 	p := Launch(newTestConfig(1, 10, 1), s, nil, []PeerAddress{{ReplicaID: 1}}, true, true)
 	tick := p.raft.electionTick
-	ne(p.Tick(), t)
+	ne(t, p.Tick())
 	if p.raft.electionTick != tick+1 {
 		t.Errorf("tick not updated")
 	}
-	ne(p.QuiescedTick(), t)
+	ne(t, p.QuiescedTick())
 	if p.raft.electionTick != tick+2 {
 		t.Errorf("tick not updated 2")
 	}
@@ -114,7 +116,7 @@ func TestRaftAPIReportUnreachable(t *testing.T) {
 	}
 	p.raft.state = leader
 	p.raft.remotes[2].state = remoteReplicate
-	ne(p.ReportUnreachableNode(2), t)
+	ne(t, p.ReportUnreachableNode(2))
 	if p.raft.remotes[2].state != remoteRetry {
 		t.Errorf("remote not set to retry state")
 	}
@@ -131,13 +133,14 @@ func TestRaftAPIReportSnapshotStatus(t *testing.T) {
 	}
 	p.raft.state = leader
 	p.raft.remotes[2].state = remoteSnapshot
-	ne(p.ReportSnapshotStatus(2, false), t)
+	ne(t, p.ReportSnapshotStatus(2, false))
 	if p.raft.remotes[2].state != remoteWait {
 		t.Errorf("remote not set to wait, %s", p.raft.remotes[2].state)
 	}
 }
 
-func testRaftAPIProposeAndConfigChange(cct pb.ConfigChangeType, nid uint64, t *testing.T) {
+func testRaftAPIProposeAndConfigChange(t *testing.T, cct pb.ConfigChangeType, nid uint64) {
+	t.Helper()
 	s := NewTestLogDB()
 	var err error
 	rawNode := Launch(newTestConfig(1, 10, 1), s, nil, []PeerAddress{{ReplicaID: 1}}, true, true)
@@ -167,13 +170,13 @@ func testRaftAPIProposeAndConfigChange(cct pb.ConfigChangeType, nid uint64, t *t
 		}
 		// Once we are the leader, propose a command and a ConfigChange.
 		if !proposed && rawNode.raft.leaderID == rawNode.raft.replicaID {
-			ne(rawNode.ProposeEntries([]pb.Entry{{Cmd: []byte("somedata")}}), t)
+			ne(t, rawNode.ProposeEntries([]pb.Entry{{Cmd: []byte("somedata")}}))
 			cc := pb.ConfigChange{Type: cct, ReplicaID: nid}
 			ccdata, err = cc.Marshal()
 			if err != nil {
 				t.Fatal(err)
 			}
-			ne(rawNode.ProposeConfigChange(cc, 128), t)
+			ne(t, rawNode.ProposeConfigChange(cc, 128))
 
 			proposed = true
 		}
@@ -209,10 +212,10 @@ func testRaftAPIProposeAndConfigChange(cct pb.ConfigChangeType, nid uint64, t *t
 }
 
 func TestRaftAPIProposeAndConfigChange(t *testing.T) {
-	testRaftAPIProposeAndConfigChange(pb.AddNode, NoLeader, t)
-	testRaftAPIProposeAndConfigChange(pb.AddNode, 2, t)
-	testRaftAPIProposeAndConfigChange(pb.RemoveNode, 2, t)
-	testRaftAPIProposeAndConfigChange(pb.AddNonVoting, 2, t)
+	testRaftAPIProposeAndConfigChange(t, pb.AddNode, NoLeader)
+	testRaftAPIProposeAndConfigChange(t, pb.AddNode, 2)
+	testRaftAPIProposeAndConfigChange(t, pb.RemoveNode, 2)
+	testRaftAPIProposeAndConfigChange(t, pb.AddNonVoting, 2)
 }
 
 func TestGetUpdateIncludeLastAppliedValue(t *testing.T) {
@@ -260,7 +263,7 @@ func TestRaftMoreEntriesToApplyControl(t *testing.T) {
 		rawNode.Commit(ud)
 	}
 	cc := pb.ConfigChange{Type: pb.AddNode, ReplicaID: 1}
-	ne(rawNode.ProposeConfigChange(cc, 128), t)
+	ne(t, rawNode.ProposeConfigChange(cc, 128))
 	if !rawNode.HasUpdate(true) {
 		t.Errorf("HasUpdate returned false")
 	}
@@ -310,7 +313,7 @@ func TestRaftAPIProposeAddDuplicateNode(t *testing.T) {
 	}
 
 	proposeConfigChangeAndApply := func(cc pb.ConfigChange, key uint64) {
-		ne(rawNode.ProposeConfigChange(cc, key), t)
+		ne(t, rawNode.ProposeConfigChange(cc, key))
 		ud, err = rawNode.GetUpdate(true, 0)
 		if err != nil {
 			t.Fatalf("unexpected error %v", err)
@@ -324,7 +327,7 @@ func TestRaftAPIProposeAddDuplicateNode(t *testing.T) {
 				if err := cc.Unmarshal(entry.Cmd); err != nil {
 					t.Fatalf("%v", err)
 				}
-				ne(rawNode.ApplyConfigChange(cc), t)
+				ne(t, rawNode.ApplyConfigChange(cc))
 			}
 		}
 		rawNode.Commit(ud)
@@ -350,7 +353,7 @@ func TestRaftAPIProposeAddDuplicateNode(t *testing.T) {
 
 	_, lastIndex := s.GetRange()
 
-	// the last three entries should be: ConfigChange cc1, cc1, cc2
+	// the last three entries should be: ConfigChange cc1, cc2
 	entries, err := s.Entries(lastIndex-2, lastIndex+1, noLimit)
 	if err != nil {
 		t.Fatal(err)
@@ -365,11 +368,11 @@ func TestRaftAPIProposeAddDuplicateNode(t *testing.T) {
 		t.Errorf("entries[2].Cmd = %v, want %v", entries[2].Cmd, ccdata2)
 	}
 	cc3 := pb.ConfigChange{Type: pb.RemoveNode, ReplicaID: 2}
-	ne(rawNode.ApplyConfigChange(cc3), t)
+	ne(t, rawNode.ApplyConfigChange(cc3))
 	cc4 := pb.ConfigChange{Type: pb.AddNonVoting, ReplicaID: 3}
-	ne(rawNode.ApplyConfigChange(cc4), t)
+	ne(t, rawNode.ApplyConfigChange(cc4))
 	cc5 := pb.ConfigChange{Type: pb.RemoveNode, ReplicaID: NoLeader}
-	ne(rawNode.ApplyConfigChange(cc5), t)
+	ne(t, rawNode.ApplyConfigChange(cc5))
 }
 
 func TestRaftAPIRejectConfigChange(t *testing.T) {
@@ -379,7 +382,7 @@ func TestRaftAPIRejectConfigChange(t *testing.T) {
 	if !p.raft.hasPendingConfigChange() {
 		t.Errorf("pending config change flag not set")
 	}
-	ne(p.RejectConfigChange(), t)
+	ne(t, p.RejectConfigChange())
 	if p.raft.hasPendingConfigChange() {
 		t.Errorf("pending config change flag not cleared")
 	}
@@ -442,7 +445,7 @@ func TestRaftAPIReadIndex(t *testing.T) {
 			rawNode.Commit(ud)
 			// Once we are the leader, issue a ReadIndex request
 			rawNode.raft.handle = appendStep
-			ne(rawNode.ReadIndex(wrequestCtx), t)
+			ne(t, rawNode.ReadIndex(wrequestCtx))
 			break
 		}
 		rawNode.Commit(ud)
@@ -563,7 +566,7 @@ func TestRaftAPILaunch(t *testing.T) {
 	}
 	rawNode.Commit(ud)
 
-	ne(rawNode.ProposeEntries([]pb.Entry{{Cmd: []byte("foo")}}), t)
+	ne(t, rawNode.ProposeEntries([]pb.Entry{{Cmd: []byte("foo")}}))
 	ud, err = rawNode.GetUpdate(true, 0)
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
@@ -676,7 +679,7 @@ func TestRaftAPIStepOnLocalMessageWillPanic(t *testing.T) {
 	}()
 	storage := NewTestLogDB()
 	p := Launch(newTestConfig(1, 10, 1), storage, nil, []PeerAddress{{ReplicaID: 1}}, true, true)
-	ne(p.Handle(pb.Message{Type: pb.LocalTick}), t)
+	ne(t, p.Handle(pb.Message{Type: pb.LocalTick}))
 }
 
 func TestRaftAPIGetUpdateCommit(t *testing.T) {
@@ -842,19 +845,19 @@ func TestRaftAPIQueryRaftLog(t *testing.T) {
 	rawNode := Launch(newTestConfig(1, 10, 1), s, nil, []PeerAddress{{ReplicaID: 1}}, true, true)
 	rawNode.raft.hasNotAppliedConfigChange = rawNode.raft.testOnlyHasConfigChangeToApply
 	ud, err := rawNode.GetUpdate(true, 0)
-	assert.NoError(t, err)
-	assert.NoError(t, s.Append(ud.EntriesToSave))
+	require.NoError(t, err)
+	require.NoError(t, s.Append(ud.EntriesToSave))
 	rawNode.Commit(ud)
 
 	rawNode.Campaign()
 	var lastIndex uint64
 	for {
 		ud, err = rawNode.GetUpdate(true, 0)
-		assert.NoError(t, err)
-		assert.NoError(t, s.Append(ud.EntriesToSave))
+		require.NoError(t, err)
+		require.NoError(t, s.Append(ud.EntriesToSave))
 		// Once we are the leader, propose a command and a ConfigChange.
 		if rawNode.raft.leaderID == rawNode.raft.replicaID {
-			ne(rawNode.ProposeEntries([]pb.Entry{{Cmd: []byte("somedata")}}), t)
+			ne(t, rawNode.ProposeEntries([]pb.Entry{{Cmd: []byte("somedata")}}))
 		}
 		rawNode.Commit(ud)
 		// Exit when we have four entries: one ConfigChange, one no-op for the election,
@@ -865,14 +868,14 @@ func TestRaftAPIQueryRaftLog(t *testing.T) {
 		}
 	}
 	entries, err := s.Entries(lastIndex-1, lastIndex+1, noLimit)
-	assert.NoError(t, err)
-	assert.NoError(t, rawNode.QueryRaftLog(lastIndex-1, lastIndex+1, noLimit))
+	require.NoError(t, err)
+	require.NoError(t, rawNode.QueryRaftLog(lastIndex-1, lastIndex+1, noLimit))
 	assert.NotNil(t, rawNode.raft.logQueryResult)
 	ud, err = rawNode.GetUpdate(true, 0)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, rawNode.raft.logQueryResult)
 	assert.False(t, ud.LogQueryResult.IsEmpty())
-	assert.Nil(t, ud.LogQueryResult.Error)
+	require.NoError(t, ud.LogQueryResult.Error)
 	rawNode.Commit(ud)
 	assert.Nil(t, rawNode.raft.logQueryResult)
 	assert.Equal(t, entries, ud.LogQueryResult.Entries)

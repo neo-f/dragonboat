@@ -34,7 +34,7 @@ func TestTrySaveSnapshot(t *testing.T) {
 
 func TestCachedNodeInfoCanBeSet(t *testing.T) {
 	c := newCache()
-	require.Equal(t, 0, len(c.nodeInfo), "unexpected map len")
+	require.Empty(t, c.nodeInfo, "unexpected map len")
 
 	toSet := c.setNodeInfo(100, 2)
 	require.True(t, toSet, "unexpected return value %t", toSet)
@@ -42,7 +42,7 @@ func TestCachedNodeInfoCanBeSet(t *testing.T) {
 	toSet = c.setNodeInfo(100, 2)
 	require.False(t, toSet, "unexpected return value %t", toSet)
 
-	require.Equal(t, 1, len(c.nodeInfo), "unexpected map len")
+	require.Len(t, c.nodeInfo, 1, "unexpected map len")
 
 	ni := raftio.NodeInfo{
 		ShardID:   100,
@@ -54,7 +54,7 @@ func TestCachedNodeInfoCanBeSet(t *testing.T) {
 
 func TestCachedStateCanBeSet(t *testing.T) {
 	c := newCache()
-	require.Equal(t, 0, len(c.ps), "unexpected savedState len %d", len(c.ps))
+	require.Empty(t, c.ps, "unexpected savedState len %d", len(c.ps))
 
 	st := pb.State{
 		Term:   1,
@@ -72,7 +72,7 @@ func TestCachedStateCanBeSet(t *testing.T) {
 	toSet = c.setState(100, 2, st)
 	require.True(t, toSet, "unexpected return value")
 
-	require.Equal(t, 1, len(c.ps), "unexpected savedState len %d", len(c.ps))
+	require.Len(t, c.ps, 1, "unexpected savedState len %d", len(c.ps))
 
 	ni := raftio.NodeInfo{
 		ShardID:   100,
@@ -95,7 +95,7 @@ func TestLastEntryBatchCanBeSetAndGet(t *testing.T) {
 	lb := pb.EntryBatch{}
 	reb, ok := c.getLastBatch(10, 2, lb)
 	require.True(t, ok, "last batch not returned")
-	require.Equal(t, 15, len(reb.Entries), "unexpected entry length")
+	require.Len(t, reb.Entries, 15, "unexpected entry length")
 }
 
 func TestLastEntryBatchCanBeUpdated(t *testing.T) {
@@ -123,7 +123,7 @@ func TestChangeReturnedLastBatchWillNotAffectTheCache(t *testing.T) {
 
 	c.setLastBatch(10, 2, eb)
 	v, _ := c.getLastBatch(10, 2, pb.EntryBatch{})
-	require.Equal(t, 15, len(v.Entries), "unexpected entry count")
+	require.Len(t, v.Entries, 15, "unexpected entry count")
 
 	for i := range uint64(15) {
 		v.Entries[i].Term = 2

@@ -16,7 +16,7 @@ package transport
 
 import (
 	"bytes"
-	"crypto/md5"
+	"crypto/md5" //nolint:gosec // used for data checksums, not security
 	"crypto/rand"
 	"fmt"
 	"io"
@@ -107,7 +107,7 @@ func (g *testSnapshotDir) getSnapshotFileMD5(shardID uint64,
 			panic(err)
 		}
 	}()
-	h := md5.New()
+	h := md5.New() //nolint:gosec // used for data checksums, not security
 	if _, err := io.Copy(h, f); err != nil {
 		return nil, err
 	}
@@ -323,6 +323,7 @@ func (h *testMessageHandler) getMessageCount(m map[raftio.NodeInfo]uint64,
 func newNOOPTestTransport(t *testing.T,
 	handler IMessageHandler, fs vfs.IFS) (*Transport,
 	*registry.Registry, *NOOPTransport, *noopRequest, *noopConnectRequest) {
+	t.Helper()
 	tsd := newTestSnapshotDir(t.TempDir(), fs)
 	nodes := registry.NewNodeRegistry(settings.Soft.StreamConnections, nil)
 	c := config.NodeHostConfig{
@@ -351,6 +352,7 @@ func newNOOPTestTransport(t *testing.T,
 func newTestTransport(t *testing.T, handler IMessageHandler,
 	mutualTLS bool, fs vfs.IFS) (*Transport, *registry.Registry,
 	*syncutil.Stopper, *testSnapshotDir) {
+	t.Helper()
 	stopper := syncutil.NewStopper()
 	nodes := registry.NewNodeRegistry(settings.Soft.StreamConnections, nil)
 	tsd := newTestSnapshotDir(t.TempDir(), fs)
@@ -376,6 +378,7 @@ func newTestTransport(t *testing.T, handler IMessageHandler,
 }
 
 func testMessageCanBeSent(t *testing.T, mutualTLS bool, sz uint64, fs vfs.IFS) {
+	t.Helper()
 	handler := newTestMessageHandler()
 	trans, nodes, stopper, _ := newTestTransport(t, handler, mutualTLS, fs)
 	defer func() {
@@ -466,6 +469,7 @@ func TestMessageCanBeSent(t *testing.T) {
 // net.ipv4.tcp_rmem = 4096 87380 25165824
 // net.ipv4.tcp_wmem = 4096 87380 25165824
 func testMessageCanBeSentWithLargeLatency(t *testing.T, mutualTLS bool, fs vfs.IFS) {
+	t.Helper()
 	handler := newTestMessageHandler()
 	trans, nodes, stopper, _ := newTestTransport(t, handler, mutualTLS, fs)
 	defer func() {
@@ -509,6 +513,7 @@ func TestMessageCanBeSentWithLargeLatency(t *testing.T) {
 
 func testMessageBatchWithNotMatchedDBVAreDropped(t *testing.T,
 	f SendMessageBatchFunc, mutualTLS bool, fs vfs.IFS) {
+	t.Helper()
 	handler := newTestMessageHandler()
 	trans, nodes, stopper, _ := newTestTransport(t, handler, mutualTLS, fs)
 	defer func() {
@@ -718,7 +723,6 @@ func waitForTotalSnapshotStatusUpdateCount(handler *testMessageHandler,
 			return
 		}
 	}
-
 }
 
 func waitForFirstSnapshotStatusUpdate(handler *testMessageHandler,
@@ -763,6 +767,7 @@ func (noopCompactor) Compact(uint64) error { return nil }
 
 func testSnapshotCanBeSent(t *testing.T,
 	sz uint64, maxWait uint64, mutualTLS bool, fs vfs.IFS) {
+	t.Helper()
 	handler := newTestMessageHandler()
 	trans, nodes, stopper, tt := newTestTransport(t, handler, mutualTLS, fs)
 	defer func() {
@@ -809,16 +814,17 @@ func testSnapshotCanBeSent(t *testing.T,
 		"got %d, want 1", handler.getReceivedSnapshotFromCount(100, 12))
 	md5Original, err := tt.getSnapshotFileMD5(100,
 		2, testSnapshotIndex, "testsnapshot.gbsnap")
-	assert.NoError(t, err, "err %v, want nil", err)
+	require.NoError(t, err, "err %v, want nil", err)
 	md5Received, err := tt.getSnapshotFileMD5(100,
 		12, testSnapshotIndex, "testsnapshot.gbsnap")
-	assert.NoError(t, err, "err %v, want nil", err)
+	require.NoError(t, err, "err %v, want nil", err)
 	assert.True(t, bytes.Equal(md5Original, md5Received),
 		"snapshot content changed during transmission")
 }
 
 func testSnapshotWithNotMatchedDBVWillBeDropped(t *testing.T,
 	f StreamChunkSendFunc, mutualTLS bool, fs vfs.IFS) {
+	t.Helper()
 	handler := newTestMessageHandler()
 	trans, nodes, stopper, tt := newTestTransport(t, handler, mutualTLS, fs)
 	defer func() {
@@ -918,6 +924,7 @@ func TestMaxSnapshotConnectionIsLimited(t *testing.T) {
 
 func testFailedConnectionReportsSnapshotFailure(t *testing.T,
 	mutualTLS bool, fs vfs.IFS) {
+	t.Helper()
 	snapshotSize := snapshotChunkSize * 10
 	handler := newTestMessageHandler()
 	trans, nodes, stopper, tt := newTestTransport(t, handler, mutualTLS, fs)
@@ -943,7 +950,7 @@ func testFailedConnectionReportsSnapshotFailure(t *testing.T,
 	waitForTotalSnapshotStatusUpdateCount(handler, 6000, 1)
 	assert.Equal(t, uint64(0), handler.getSnapshotCount(100, 2),
 		"got %d, want %d", handler.getSnapshotCount(100, 2), 0)
-	assert.Greater(t, handler.getFailedSnapshotCount(100, 2), uint64(0),
+	assert.Positive(t, handler.getFailedSnapshotCount(100, 2),
 		"got %d, want > 0", handler.getFailedSnapshotCount(100, 2))
 }
 
@@ -956,6 +963,7 @@ func TestFailedConnectionReportsSnapshotFailure(t *testing.T) {
 
 func testSnapshotWithExternalFilesCanBeSend(t *testing.T,
 	sz uint64, maxWait uint64, mutualTLS bool, fs vfs.IFS) {
+	t.Helper()
 	handler := newTestMessageHandler()
 	trans, nodes, stopper, tt := newTestTransport(t, handler, mutualTLS, fs)
 	defer func() {
@@ -1010,9 +1018,9 @@ func testSnapshotWithExternalFilesCanBeSend(t *testing.T,
 	filenames := []string{"testsnapshot.gbsnap", "external1.data", "external2.data"}
 	for _, fn := range filenames {
 		md5Original, err := tt.getSnapshotFileMD5(100, 2, testSnapshotIndex, fn)
-		assert.NoError(t, err, "err %v, want nil", err)
+		require.NoError(t, err, "err %v, want nil", err)
 		md5Received, err := tt.getSnapshotFileMD5(100, 12, testSnapshotIndex, fn)
-		assert.NoError(t, err, "err %v, want nil", err)
+		require.NoError(t, err, "err %v, want nil", err)
 		assert.True(t, bytes.Equal(md5Original, md5Received),
 			"snapshot content changed during transmission")
 	}
@@ -1061,7 +1069,7 @@ func TestInitialMessageCanBeSent(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	assert.Equal(t, 1, tt.queueSize(), "queue len %d, want 1", tt.queueSize())
-	assert.Equal(t, 1, len(tt.mu.breakers), "breakers len %d, want 1",
+	assert.Len(t, tt.mu.breakers, 1, "breakers len %d, want 1",
 		len(tt.mu.breakers))
 	assert.Equal(t, uint64(1), noopTransport.connected, "connected %d, want 1",
 		noopTransport.connected)
@@ -1240,7 +1248,7 @@ func TestFailedStreamingDueToTooManyConnectionsHaveStatusUpdated(t *testing.T) {
 		sink := tt.GetStreamSink(100, 2)
 		assert.NotNil(t, sink, "failed to connect")
 	}
-	for i := uint64(0); i < 2*maxConnectionCount; i++ {
+	for range 2 * maxConnectionCount {
 		sink := tt.GetStreamSink(100, 2)
 		assert.Nil(t, sink, "stream connection not limited")
 	}

@@ -42,6 +42,6 @@ func MkdirTemp(dir string, pattern string) (string, error) {
 
 // ReadFile ...
 func ReadFile(name string) ([]byte, error) {
-	result, err := os.ReadFile(name)
+	result, err := os.ReadFile(name) //nolint:gosec // internal trusted path
 	return result, ws(err)
 }

@@ -32,7 +32,7 @@ func TestNew(t *testing.T) {
 		u := New()
 		values[u.String()] = struct{}{}
 	}
-	require.Equal(t, 1000, len(values))
+	require.Len(t, values, 1000)
 }
 
 func TestNewUUID(t *testing.T) {

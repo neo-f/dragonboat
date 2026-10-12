@@ -47,6 +47,7 @@ func TestKVCanBeCreatedAndClosed(t *testing.T) {
 
 func runKVTest(t *testing.T, tf func(t *testing.T, kvs kv.IKVStore),
 	fs vfs.IFS) {
+	t.Helper()
 	defer leaktest.AfterTest(t)()
 	testDir := t.TempDir()
 	cfg := config.GetDefaultLogDBConfig()
@@ -61,6 +62,7 @@ func runKVTest(t *testing.T, tf func(t *testing.T, kvs kv.IKVStore),
 
 func TestKVGetAndSet(t *testing.T) {
 	tf := func(t *testing.T, kvs kv.IKVStore) {
+		t.Helper()
 		err := kvs.SaveValue([]byte("test-key"), []byte("test-value"))
 		require.NoError(t, err, "failed to save the value")
 		found := false
@@ -83,6 +85,7 @@ func TestKVGetAndSet(t *testing.T) {
 
 func TestKVValueCanBeDeleted(t *testing.T) {
 	tf := func(t *testing.T, kvs kv.IKVStore) {
+		t.Helper()
 		err := kvs.SaveValue([]byte("test-key"), []byte("test-value"))
 		require.NoError(t, err, "failed to save the value")
 		err = kvs.DeleteValue([]byte("test-key"))
@@ -107,6 +110,7 @@ func TestKVValueCanBeDeleted(t *testing.T) {
 
 func TestKVWriteBatch(t *testing.T) {
 	tf := func(t *testing.T, kvs kv.IKVStore) {
+		t.Helper()
 		wb := kvs.GetWriteBatch()
 		defer wb.Destroy()
 		wb.Put([]byte("test-key"), []byte("test-value"))
@@ -133,7 +137,9 @@ func TestKVWriteBatch(t *testing.T) {
 
 func testKVIterateValue(t *testing.T,
 	fk []byte, lk []byte, inc bool, count uint64) {
+	t.Helper()
 	tf := func(t *testing.T, kvs kv.IKVStore) {
+		t.Helper()
 		for i := range 10 {
 			key := fmt.Sprintf("key%d", i)
 			val := fmt.Sprintf("val%d", i)
@@ -160,6 +166,7 @@ func TestKVIterateValue(t *testing.T) {
 
 func TestWriteBatchCanBeCleared(t *testing.T) {
 	tf := func(t *testing.T, kvs kv.IKVStore) {
+		t.Helper()
 		wb := kvs.GetWriteBatch()
 		wb.Put([]byte("key-1"), []byte("val-1"))
 		wb.Put([]byte("key-2"), []byte("val-2"))
@@ -180,6 +187,7 @@ func TestWriteBatchCanBeCleared(t *testing.T) {
 
 func TestHasEntryRecord(t *testing.T) {
 	tf := func(t *testing.T, kvs kv.IKVStore) {
+		t.Helper()
 		has, err := hasEntryRecord(kvs, true)
 		require.NoError(t, err, "hasEntryRecord failed")
 		require.False(t, has, "unexpected result")
@@ -219,6 +227,7 @@ func TestHasEntryRecord(t *testing.T) {
 
 func TestEntriesCanBeRemovedFromKVStore(t *testing.T) {
 	tf := func(t *testing.T, kvs kv.IKVStore) {
+		t.Helper()
 		wb := kvs.GetWriteBatch()
 		defer wb.Destroy()
 		for i := uint64(1); i <= 100; i++ {
@@ -424,6 +433,7 @@ func modifyDataFile(fp string, fs vfs.IFS) (bool, error) {
 }
 
 func testDiskCorruptionIsHandled(t *testing.T, wal bool, cut bool, fs vfs.IFS) {
+	t.Helper()
 	testDir := t.TempDir()
 	cfg := config.GetDefaultLogDBConfig()
 	func() {

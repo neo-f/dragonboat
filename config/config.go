@@ -707,7 +707,7 @@ func (c *NodeHostConfig) GetServerTLSConfig() (*tls.Config, error) {
 	if c.MutualTLS {
 		return netutil.GetServerTLSConfig(c.CAFile, c.CertFile, c.KeyFile)
 	}
-	return nil, nil
+	return nil, nil //nolint:nilnil // nil TLS config means MutualTLS is not enabled
 }
 
 // GetClientTLSConfig returns the client tls.Config instance for the specified
@@ -729,7 +729,7 @@ func (c *NodeHostConfig) GetClientTLSConfig(target string) (*tls.Config, error) 
 			RootCAs:      tlsConfig.RootCAs,
 		}, nil
 	}
-	return nil, nil
+	return nil, nil //nolint:nilnil // nil TLS config means MutualTLS is not enabled
 }
 
 // GetDeploymentID returns the deployment ID to be used.

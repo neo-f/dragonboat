@@ -81,6 +81,7 @@ func hasExternalFile(cs *Chunk,
 
 func runChunkTest(t *testing.T,
 	fn func(*testing.T, *Chunk, *testMessageHandler), fs vfs.IFS) {
+	t.Helper()
 	defer leaktest.AfterTest(t)()
 	handler := newTestMessageHandler()
 	trans, _, stopper, _ := newTestTransport(t, handler, false, fs)
@@ -107,6 +108,7 @@ func runChunkTest(t *testing.T,
 
 func TestMaxSlotIsEnforced(t *testing.T) {
 	fn := func(t *testing.T, chunks *Chunk, handler *testMessageHandler) {
+		t.Helper()
 		inputs := getTestChunk()
 		chunks.validate = false
 		v := uint64(1)
@@ -130,7 +132,7 @@ func TestMaxSlotIsEnforced(t *testing.T) {
 				t.Errorf("not rejected")
 			}
 		}
-		assert.Equal(t, count, len(chunks.tracked))
+		assert.Len(t, chunks.tracked, count)
 	}
 	fs := vfs.GetTestFS()
 	runChunkTest(t, fn, fs)
@@ -138,6 +140,7 @@ func TestMaxSlotIsEnforced(t *testing.T) {
 
 func TestOutOfOrderChunkWillBeIgnored(t *testing.T) {
 	fn := func(t *testing.T, chunks *Chunk, handler *testMessageHandler) {
+		t.Helper()
 		inputs := getTestChunk()
 		chunks.validate = false
 		chunks.addLocked(inputs[0])
@@ -155,13 +158,14 @@ func TestOutOfOrderChunkWillBeIgnored(t *testing.T) {
 
 func TestChunkFromANewLeaderIsIgnored(t *testing.T) {
 	fn := func(t *testing.T, chunks *Chunk, handler *testMessageHandler) {
+		t.Helper()
 		inputs := getTestChunk()
 		chunks.validate = false
 		chunks.addLocked(inputs[0])
 		key := chunkKey(inputs[0])
 		td := chunks.tracked[key]
 		next := td.next
-		td.first.From = td.first.From + 1
+		td.first.From++
 		assert.Nil(t, chunks.record(inputs[1]))
 		td = chunks.tracked[key]
 		assert.Equal(t, next, td.next)
@@ -172,6 +176,7 @@ func TestChunkFromANewLeaderIsIgnored(t *testing.T) {
 
 func TestNotTrackedChunkWillBeIgnored(t *testing.T) {
 	fn := func(t *testing.T, chunks *Chunk, handler *testMessageHandler) {
+		t.Helper()
 		inputs := getTestChunk()
 		assert.Nil(t, chunks.record(inputs[1]))
 	}
@@ -181,6 +186,7 @@ func TestNotTrackedChunkWillBeIgnored(t *testing.T) {
 
 func TestGetOrCreateSnapshotLock(t *testing.T) {
 	fn := func(t *testing.T, chunks *Chunk, handler *testMessageHandler) {
+		t.Helper()
 		l := chunks.getSnapshotLock("k1")
 		l1, ok := chunks.locks["k1"]
 		assert.True(t, ok)
@@ -191,7 +197,7 @@ func TestGetOrCreateSnapshotLock(t *testing.T) {
 		assert.NotNil(t, l3)
 		ll := chunks.getSnapshotLock("k1")
 		assert.Equal(t, l1, ll)
-		assert.Equal(t, 3, len(chunks.locks))
+		assert.Len(t, chunks.locks, 3)
 	}
 	fs := vfs.GetTestFS()
 	runChunkTest(t, fn, fs)
@@ -222,6 +228,7 @@ func TestShouldUpdateValidator(t *testing.T) {
 
 func TestAddFirstChunkRecordsTheSnapshotAndCreatesTheTempFile(t *testing.T) {
 	fn := func(t *testing.T, chunks *Chunk, handler *testMessageHandler) {
+		t.Helper()
 		inputs := getTestChunk()
 		chunks.validate = false
 		chunks.addLocked(inputs[0])
@@ -239,6 +246,7 @@ func TestAddFirstChunkRecordsTheSnapshotAndCreatesTheTempFile(t *testing.T) {
 
 func TestGcRemovesRecordAndTempFile(t *testing.T) {
 	fn := func(t *testing.T, chunks *Chunk, handler *testMessageHandler) {
+		t.Helper()
 		inputs := getTestChunk()
 		chunks.validate = false
 		chunks.addLocked(inputs[0])
@@ -258,6 +266,7 @@ func TestGcRemovesRecordAndTempFile(t *testing.T) {
 
 func TestReceivedCompleteChunkWillBeMergedIntoSnapshotFile(t *testing.T) {
 	fn := func(t *testing.T, chunks *Chunk, handler *testMessageHandler) {
+		t.Helper()
 		inputs := getTestChunk()
 		chunks.validate = false
 		for _, c := range inputs {
@@ -274,13 +283,14 @@ func TestReceivedCompleteChunkWillBeMergedIntoSnapshotFile(t *testing.T) {
 
 func TestChunkAreIgnoredWhenNodeIsRemoved(t *testing.T) {
 	fn := func(t *testing.T, chunks *Chunk, handler *testMessageHandler) {
+		t.Helper()
 		inputs := getTestChunk()
 		env := chunks.getEnv(inputs[0])
 		chunks.validate = false
 		assert.True(t, chunks.addLocked(inputs[0]))
 		assert.True(t, chunks.addLocked(inputs[1]))
 		snapshotDir := env.GetRootDir()
-		assert.Nil(t, fileutil.MarkDirAsDeleted(snapshotDir, &pb.Message{}, chunks.fs))
+		require.NoError(t, fileutil.MarkDirAsDeleted(snapshotDir, &pb.Message{}, chunks.fs))
 		for idx, c := range inputs {
 			if idx <= 1 {
 				continue
@@ -298,10 +308,11 @@ func TestChunkAreIgnoredWhenNodeIsRemoved(t *testing.T) {
 // when there is no flag file
 func TestOutOfDateChunkCanBeHandled(t *testing.T) {
 	fn := func(t *testing.T, chunks *Chunk, handler *testMessageHandler) {
+		t.Helper()
 		inputs := getTestChunk()
 		env := chunks.getEnv(inputs[0])
 		snapDir := env.GetFinalDir()
-		assert.Nil(t, chunks.fs.MkdirAll(snapDir, 0755))
+		require.NoError(t, chunks.fs.MkdirAll(snapDir, 0755))
 		chunks.validate = false
 		for _, c := range inputs {
 			chunks.addLocked(c)
@@ -319,6 +330,7 @@ func TestOutOfDateChunkCanBeHandled(t *testing.T) {
 
 func TestSignificantlyDelayedNonFirstChunkAreIgnored(t *testing.T) {
 	fn := func(t *testing.T, chunks *Chunk, handler *testMessageHandler) {
+		t.Helper()
 		inputs := getTestChunk()
 		chunks.validate = false
 		chunks.addLocked(inputs[0])
@@ -367,6 +379,7 @@ func checkTestSnapshotFile(chunks *Chunk,
 
 func TestAddingFirstChunkAgainResetsTempFile(t *testing.T) {
 	fn := func(t *testing.T, chunks *Chunk, handler *testMessageHandler) {
+		t.Helper()
 		inputs := getTestChunk()
 		chunks.validate = false
 		chunks.addLocked(inputs[0])
@@ -389,7 +402,9 @@ func TestAddingFirstChunkAgainResetsTempFile(t *testing.T) {
 
 func testSnapshotWithExternalFilesAreHandledByChunk(t *testing.T,
 	validate bool, snapshotCount uint64, fs vfs.IFS) {
+	t.Helper()
 	fn := func(t *testing.T, chunks *Chunk, handler *testMessageHandler) {
+		t.Helper()
 		chunks.validate = validate
 		sf1 := &pb.SnapshotFile{
 			Filepath: "/data/external1.data",
@@ -418,7 +433,7 @@ func testSnapshotWithExternalFilesAreHandledByChunk(t *testing.T,
 			Snapshot: ss,
 		}
 		inputs, err := splitSnapshotMessage(msg, chunks.fs)
-		require.Nil(t, err)
+		require.NoError(t, err)
 		for _, c := range inputs {
 			c.DeploymentId = settings.UnmanagedDeploymentID
 			c.Data = make([]byte, c.ChunkSize)
@@ -448,6 +463,7 @@ func TestSnapshotWithExternalFilesAreHandledByChunk(t *testing.T) {
 
 func TestWitnessSnapshotCanBeHandled(t *testing.T) {
 	fn := func(t *testing.T, chunks *Chunk, handler *testMessageHandler) {
+		t.Helper()
 		ss := pb.Snapshot{
 			Filepath: "",
 			FileSize: 0,
@@ -465,8 +481,8 @@ func TestWitnessSnapshotCanBeHandled(t *testing.T) {
 			Snapshot: ss,
 		}
 		inputs, err := splitSnapshotMessage(msg, chunks.fs)
-		require.Nil(t, err)
-		assert.Equal(t, 1, len(inputs))
+		require.NoError(t, err)
+		assert.Len(t, inputs, 1)
 		chunk := inputs[0]
 		assert.Equal(t, raftio.TransportBinVersion, chunk.BinVer)
 		assert.True(t, chunk.Witness)
@@ -500,8 +516,8 @@ func TestSnapshotRecordWithoutExternalFilesCanBeSplitIntoChunk(t *testing.T) {
 		Snapshot: ss,
 	}
 	chunks, err := splitSnapshotMessage(msg, fs)
-	require.Nil(t, err)
-	assert.Equal(t, 4, len(chunks))
+	require.NoError(t, err)
+	assert.Len(t, chunks, 4)
 	for _, c := range chunks {
 		assert.Equal(t, raftio.TransportBinVersion, c.BinVer)
 		assert.Equal(t, uint64(100), c.ShardID)
@@ -559,8 +575,8 @@ func TestSnapshotRecordWithTwoExternalFilesCanBeSplitIntoChunk(t *testing.T) {
 		Snapshot: ss,
 	}
 	chunks, err := splitSnapshotMessage(msg, fs)
-	require.Nil(t, err)
-	assert.Equal(t, 7, len(chunks))
+	require.NoError(t, err)
+	assert.Len(t, chunks, 7)
 	total := uint64(0)
 	for idx, c := range chunks {
 		assert.Equal(t, uint64(idx), c.ChunkId)
@@ -583,12 +599,13 @@ func TestSnapshotRecordWithTwoExternalFilesCanBeSplitIntoChunk(t *testing.T) {
 	}
 	assert.Equal(t, sf1.FileId, chunks[4].FileInfo.FileId)
 	assert.Equal(t, sf2.FileId, chunks[5].FileInfo.FileId)
-	assert.Equal(t, 16, len(chunks[4].FileInfo.Metadata))
-	assert.Equal(t, 32, len(chunks[5].FileInfo.Metadata))
+	assert.Len(t, chunks[4].FileInfo.Metadata, 16)
+	assert.Len(t, chunks[5].FileInfo.Metadata, 32)
 }
 
 func TestGetMessageFromChunk(t *testing.T) {
 	fn := func(t *testing.T, chunks *Chunk, handler *testMessageHandler) {
+		t.Helper()
 		sf1 := &pb.SnapshotFile{
 			Filepath: "/data/external1.data",
 			FileSize: 100,
@@ -614,7 +631,7 @@ func TestGetMessageFromChunk(t *testing.T) {
 			Filepath:     "test.data",
 		}
 		msg := chunks.toMessage(chunk, files)
-		assert.Equal(t, 1, len(msg.Requests))
+		assert.Len(t, msg.Requests, 1)
 		assert.Equal(t, chunk.BinVer, msg.BinVer)
 		req := msg.Requests[0]
 		assert.Equal(t, chunk.DeploymentId, msg.DeploymentId)
@@ -623,12 +640,12 @@ func TestGetMessageFromChunk(t *testing.T) {
 		assert.Equal(t, chunk.ReplicaID, req.To)
 		assert.Equal(t, chunk.ShardID, req.ShardID)
 		ss := req.Snapshot
-		assert.Equal(t, len(files), len(ss.Files))
+		assert.Len(t, ss.Files, len(files))
 		assert.Equal(t, chunk.FileSize, ss.FileSize)
 		assert.Equal(t, chunks.fs.PathJoin(chunks.dir(123, 3),
 			"snapshot-00000000000000C8", "test.data"), ss.Filepath)
-		assert.Equal(t, len(sf1.Metadata), len(ss.Files[0].Metadata))
-		assert.Equal(t, len(sf2.Metadata), len(ss.Files[1].Metadata))
+		assert.Len(t, ss.Files[0].Metadata, len(sf1.Metadata))
+		assert.Len(t, ss.Files[1].Metadata, len(sf2.Metadata))
 		assert.Equal(t, chunks.fs.PathJoin(chunks.dir(123, 3),
 			"snapshot-00000000000000C8", "external-file-1"), ss.Files[0].Filepath)
 		assert.Equal(t, chunks.fs.PathJoin(chunks.dir(123, 3),

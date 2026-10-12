@@ -54,15 +54,27 @@ func overwriteSettings(cfg map[string]any, rd reflect.Value) {
 		if field.IsValid() {
 			switch field.Type().String() {
 			case "uint64":
-				nv := uint64(val.(float64))
+				f, ok := val.(float64)
+				if !ok {
+					plog.Panicf("setting %s is not a float64 value", key)
+				}
+				nv := uint64(f)
 				plog.Infof("Setting %s to uint64 value %d", key, nv)
 				field.SetUint(nv)
 			case "bool":
-				plog.Infof("Setting %s to bool value %t", key, val.(bool))
-				field.SetBool(val.(bool))
+				b, ok := val.(bool)
+				if !ok {
+					plog.Panicf("setting %s is not a bool value", key)
+				}
+				plog.Infof("Setting %s to bool value %t", key, b)
+				field.SetBool(b)
 			case "string":
-				plog.Infof("Setting %s to string value %s", key, val.(string))
-				field.SetString(val.(string))
+				s, ok := val.(string)
+				if !ok {
+					plog.Panicf("setting %s is not a string value", key)
+				}
+				plog.Infof("Setting %s to string value %s", key, s)
+				field.SetString(s)
 			default:
 			}
 		}

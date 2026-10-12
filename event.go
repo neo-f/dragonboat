@@ -61,26 +61,26 @@ func newRaftEventListener(shardID uint64, replicaID uint64,
 	}
 	if useMetrics {
 		label := fmt.Sprintf(`{shardid="%d",replicaid="%d"}`, shardID, replicaID)
-		name := fmt.Sprintf(`dragonboat_raftnode_campaign_launched_total%s`, label)
+		name := "dragonboat_raftnode_campaign_launched_total" + label
 		el.campaignLaunched = metrics.GetOrCreateCounter(name)
-		name = fmt.Sprintf(`dragonboat_raftnode_campaign_skipped_total%s`, label)
+		name = "dragonboat_raftnode_campaign_skipped_total" + label
 		el.campaignSkipped = metrics.GetOrCreateCounter(name)
-		name = fmt.Sprintf(`dragonboat_raftnode_snapshot_rejected_total%s`, label)
+		name = "dragonboat_raftnode_snapshot_rejected_total" + label
 		el.snapshotRejected = metrics.GetOrCreateCounter(name)
-		name = fmt.Sprintf(`dragonboat_raftnode_replication_rejected_total%s`, label)
+		name = "dragonboat_raftnode_replication_rejected_total" + label
 		el.replicationRejected = metrics.GetOrCreateCounter(name)
-		name = fmt.Sprintf(`dragonboat_raftnode_proposal_dropped_total%s`, label)
+		name = "dragonboat_raftnode_proposal_dropped_total" + label
 		el.proposalDropped = metrics.GetOrCreateCounter(name)
-		name = fmt.Sprintf(`dragonboat_raftnode_read_index_dropped_total%s`, label)
+		name = "dragonboat_raftnode_read_index_dropped_total" + label
 		el.readIndexDropped = metrics.GetOrCreateCounter(name)
-		name = fmt.Sprintf(`dragonboat_raftnode_has_leader%s`, label)
+		name = "dragonboat_raftnode_has_leader" + label
 		el.hasLeader = metrics.GetOrCreateGauge(name, func() float64 {
 			if atomic.LoadUint64(&el.leaderID) == raftio.NoLeader {
 				return 0.0
 			}
 			return 1.0
 		})
-		name = fmt.Sprintf(`dragonboat_raftnode_term%s`, label)
+		name = "dragonboat_raftnode_term" + label
 		el.term = metrics.GetOrCreateGauge(name, func() float64 {
 			return float64(atomic.LoadUint64(&el.termValue))
 		})

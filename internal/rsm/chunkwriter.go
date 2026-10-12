@@ -81,7 +81,7 @@ func (cw *ChunkWriter) Write(data []byte) (int, error) {
 
 func (cw *ChunkWriter) onNewBlock(data []byte, crc []byte) error {
 	defer func() {
-		cw.chunkID = cw.chunkID + 1
+		cw.chunkID++
 	}()
 	chunk := cw.getChunk()
 	var payload []byte

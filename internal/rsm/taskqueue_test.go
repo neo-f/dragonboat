@@ -71,7 +71,7 @@ func TestGetCanReturnAddedTaskFromTaskQueue(t *testing.T) {
 
 func TestTaskQueueResize(t *testing.T) {
 	tq := NewTaskQueue()
-	for i := uint64(0); i < initialTaskQueueCap*3; i++ {
+	for i := range initialTaskQueueCap * 3 {
 		task := Task{ShardID: i}
 		tq.Add(task)
 	}
@@ -91,7 +91,7 @@ func TestTaskQueueResize(t *testing.T) {
 
 func TestMoreEntryToApply(t *testing.T) {
 	tq := NewTaskQueue()
-	for i := uint64(0); i < taskQueueBusyCap-1; i++ {
+	for i := range taskQueueBusyCap - 1 {
 		task := Task{ShardID: i}
 		tq.Add(task)
 		more := tq.MoreEntryToApply()
@@ -109,7 +109,7 @@ func TestTaskQueueGetAll(t *testing.T) {
 	t3 := Task{ShardID: 3}
 	tq := NewTaskQueue()
 	all := tq.GetAll()
-	assert.Len(t, all, 0, "unexpected results")
+	assert.Empty(t, all, "unexpected results")
 	tq.Add(t1)
 	all = tq.GetAll()
 	require.Len(t, all, 1, "unexpected results")

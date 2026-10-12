@@ -42,6 +42,7 @@ import (
 )
 
 func benchmarkAllocs(b *testing.B, sz uint64) {
+	b.Helper()
 	b.ReportAllocs()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
@@ -67,6 +68,7 @@ func BenchmarkAllocs4096Bytes(b *testing.B) {
 }
 
 func benchmarkEncodedPayload(b *testing.B, ct dio.CompressionType, sz uint64) {
+	b.Helper()
 	b.ReportAllocs()
 	b.SetBytes(int64(sz))
 	input := make([]byte, sz)
@@ -120,6 +122,7 @@ func BenchmarkAddToEntryQueue(b *testing.B) {
 }
 
 func benchmarkProposeN(b *testing.B, sz int) {
+	b.Helper()
 	b.ReportAllocs()
 	data := make([]byte, sz)
 	p := &sync.Pool{}
@@ -178,6 +181,7 @@ func BenchmarkPendingProposalNextKey(b *testing.B) {
 	cfg := config.Config{ShardID: 1, ReplicaID: 1}
 	pp := newPendingProposal(cfg, false, p, q)
 	b.RunParallel(func(pb *testing.PB) {
+		//nolint:gosec // non-cryptographic use: benchmark client IDs
 		clientID := mathrand.Uint64()
 		for pb.Next() {
 			pp.nextKey(clientID)
@@ -215,6 +219,7 @@ func BenchmarkReadIndexRead(b *testing.B) {
 }
 
 func benchmarkMarshalEntryN(b *testing.B, sz int) {
+	b.Helper()
 	b.ReportAllocs()
 	e := pb.Entry{
 		Index:       12843560,
@@ -295,7 +300,7 @@ func BenchmarkFSyncLatency(b *testing.B) {
 		EntriesToSave: []pb.Entry{e},
 	}
 	b.StartTimer()
-	for n := 0; n < b.N; n++ {
+	for range b.N {
 		if err := db.SaveRaftState([]pb.Update{u}, 1); err != nil {
 			b.Fatalf("%v", err)
 		}
@@ -303,6 +308,7 @@ func BenchmarkFSyncLatency(b *testing.B) {
 }
 
 func benchmarkSaveRaftState(b *testing.B, sz int) {
+	b.Helper()
 	b.ReportAllocs()
 	b.StopTimer()
 	l := logger.GetLogger("logdb")
@@ -401,6 +407,7 @@ func (d *dummyTransportEvent) ConnectionEstablished(addr string, snapshot bool) 
 func (d *dummyTransportEvent) ConnectionFailed(addr string, snapshot bool)      {}
 
 func benchmarkTransport(b *testing.B, sz int) {
+	b.Helper()
 	b.ReportAllocs()
 	b.StopTimer()
 	l := logger.GetLogger("transport")
@@ -523,7 +530,8 @@ func BenchmarkLookup(b *testing.B) {
 		if err != nil {
 			b.Fatalf("lookup failed %v", err)
 		}
-		if result == nil || len(result.([]byte)) != 1 {
+		rb, _ := result.([]byte)
+		if len(rb) != 1 {
 			b.Fatalf("unexpected result")
 		}
 	}
@@ -550,6 +558,7 @@ func BenchmarkNALookup(b *testing.B) {
 }
 
 func benchmarkStateMachineStep(b *testing.B, sz int, noopSession bool) {
+	b.Helper()
 	b.ReportAllocs()
 	b.StopTimer()
 	ds := &tests.NoOP{NoAlloc: true}
@@ -592,7 +601,7 @@ func benchmarkStateMachineStep(b *testing.B, sz int, noopSession bool) {
 		}
 	}
 	b.StartTimer()
-	for x := 0; x < b.N; x++ {
+	for range b.N {
 		entries = entries[:0]
 		for range uint64(128) {
 			idx++

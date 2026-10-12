@@ -47,6 +47,7 @@ type ShardInfo struct {
 	// StateMachineType is the type of the state machine.
 	StateMachineType sm.Type
 	// IsLeader indicates whether this is a leader node.
+	//
 	// Deprecated: Use LeaderID and Term instead.
 	IsLeader bool
 	// LeaderID is the replica ID of the current leader
@@ -157,6 +158,7 @@ func (v *view) toShuffledList() []ShardView {
 		}
 	}()
 
+	//nolint:gosec // non-cryptographic use: shuffling gossip payload order
 	rand.Shuffle(len(ci), func(i, j int) { ci[i], ci[j] = ci[j], ci[i] })
 	return ci
 }

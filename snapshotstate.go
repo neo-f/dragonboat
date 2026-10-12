@@ -183,12 +183,12 @@ func (rs *snapshotState) getStreamReq() (rsm.Task, getSink, bool) {
 }
 
 func (rs *snapshotState) notifySnapshotStatus(save bool,
-	recover bool, stream bool, initial bool, index uint64) {
+	recovering bool, stream bool, initial bool, index uint64) {
 	count := 0
 	if save {
 		count++
 	}
-	if recover {
+	if recovering {
 		count++
 	}
 	if stream {
@@ -196,18 +196,18 @@ func (rs *snapshotState) notifySnapshotStatus(save bool,
 	}
 	if count != 1 {
 		plog.Panicf("invalid request, save %t, recover %t, stream %t",
-			save, recover, stream)
+			save, recovering, stream)
 	}
 	t := rsm.Task{
 		Save:    save,
-		Recover: recover,
+		Recover: recovering,
 		Stream:  stream,
 		Initial: initial,
 		Index:   index,
 	}
 	if save {
 		rs.saveCompleted.setTask(t)
-	} else if recover {
+	} else if recovering {
 		rs.recoverCompleted.setTask(t)
 	} else {
 		rs.streamCompleted.setTask(t)

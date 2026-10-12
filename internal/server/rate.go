@@ -38,9 +38,9 @@ type RateLimiter struct {
 }
 
 // NewRateLimiter creates and returns a rate limiter instance.
-func NewRateLimiter(max uint64) *RateLimiter {
+func NewRateLimiter(maxSize uint64) *RateLimiter {
 	return &RateLimiter{
-		maxSize: max,
+		maxSize: maxSize,
 	}
 }
 

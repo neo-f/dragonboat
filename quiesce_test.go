@@ -41,7 +41,7 @@ func TestIncreaseTickCanEnterQuiesce(t *testing.T) {
 	}
 	for i, tt := range tests {
 		q := getTestQuiesce()
-		for k := uint64(0); k < tt.tick; k++ {
+		for range tt.tick {
 			q.tick()
 		}
 		assert.Equal(t, tt.quiesced, q.quiesced(),
@@ -64,7 +64,7 @@ func TestQuiesceCanBeDisabled(t *testing.T) {
 		q := getTestQuiesce()
 		// disable it
 		q.enabled = false
-		for k := uint64(0); k < tt.tick; k++ {
+		for range tt.tick {
 			q.tick()
 		}
 		assert.Equal(t, tt.quiesced, q.quiesced(),
@@ -85,7 +85,7 @@ func TestExitFromQuiesceWhenActivityIsRecorded(t *testing.T) {
 	}
 	for i, tt := range tests {
 		q := getTestQuiesce()
-		for k := uint64(0); k < q.threshold()+1; k++ {
+		for range q.threshold() + 1 {
 			q.tick()
 		}
 		assert.True(t, q.quiesced(),
@@ -111,7 +111,7 @@ func TestMsgHeartbeatWillNotStopEnteringQuiesce(t *testing.T) {
 	}
 	for i, tt := range tests {
 		q := getTestQuiesce()
-		for k := uint64(0); k < tt.tick; k++ {
+		for range tt.tick {
 			q.tick()
 			q.record(pb.Heartbeat)
 		}
@@ -122,7 +122,7 @@ func TestMsgHeartbeatWillNotStopEnteringQuiesce(t *testing.T) {
 
 func TestWillNotExitFromQuiesceForDelayedMsgHeartbeatMsg(t *testing.T) {
 	q := getTestQuiesce()
-	for k := uint64(0); k < q.threshold()+1; k++ {
+	for range q.threshold() + 1 {
 		q.tick()
 	}
 	assert.True(t, q.quiesced(), "should be quiesced")

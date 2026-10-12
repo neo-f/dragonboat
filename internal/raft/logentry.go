@@ -110,7 +110,6 @@ func (l *entryLog) lastIndex() uint64 {
 	}
 	_, index := l.logdb.GetRange()
 	return index
-
 }
 
 func (l *entryLog) termEntryRange() (uint64, uint64) {

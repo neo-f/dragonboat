@@ -51,7 +51,7 @@ func TestCorruptedBlockIsRejected(t *testing.T) {
 	require.NoError(t, err)
 	v = append(v, h.Sum(nil)...)
 	require.True(t, validateBlock(v, h))
-	v[0] = v[0] + 1
+	v[0]++
 	require.False(t, validateBlock(v, h))
 }
 
@@ -88,8 +88,8 @@ func TestWellFormedDataCanPassV2Validator(t *testing.T) {
 		require.NoError(t, err)
 		err = w.Close()
 		require.NoError(t, err)
-		header := make([]byte, HeaderSize, HeaderSize+uint64(len(buf.Bytes())))
-		data := append(header, buf.Bytes()...)
+		data := make([]byte, HeaderSize, HeaderSize+uint64(len(buf.Bytes())))
+		data = append(data, buf.Bytes()...)
 		validator := newV2Validator(getDefaultChecksum())
 		require.True(t, validator.AddChunk(data, 0))
 		require.True(t, validator.Validate())
@@ -107,6 +107,7 @@ func TestWellFormedDataCanPassV2Validator(t *testing.T) {
 
 func testCorruptedDataCanBeDetectedByValidator(t *testing.T,
 	corruptFn func([]byte) []byte, ok bool) {
+	t.Helper()
 	szs := []uint64{
 		1,
 		blockSize,
@@ -129,7 +130,7 @@ func testCorruptedDataCanBeDetectedByValidator(t *testing.T,
 		payload := buf.Bytes()
 		payload = corruptFn(payload)
 		header := make([]byte, HeaderSize, HeaderSize+uint64(len(payload)))
-		data := append(header, payload...)
+		header = append(header, payload...)
 		vf := func(data []byte) bool {
 			validator := newV2Validator(getDefaultChecksum())
 			if !validator.AddChunk(data, 0) {
@@ -137,7 +138,7 @@ func testCorruptedDataCanBeDetectedByValidator(t *testing.T,
 			}
 			return validator.Validate()
 		}
-		result := vf(data)
+		result := vf(header)
 		require.Equal(t, ok, result)
 		if sz > HeaderSize {
 			szz := sz
@@ -154,7 +155,7 @@ func testCorruptedDataCanBeDetectedByValidator(t *testing.T,
 				}
 				return validator.Validate()
 			}
-			result := vf(data)
+			result := vf(header)
 			require.Equal(t, ok, result)
 		}
 	}
@@ -166,7 +167,7 @@ func TestCorruptedDataCanBeDetectedByValidator(t *testing.T) {
 	}
 	testCorruptedDataCanBeDetectedByValidator(t, noop, true)
 	firstByte := func(data []byte) []byte {
-		data[0] = data[0] + 1
+		data[0]++
 		return data
 	}
 	testCorruptedDataCanBeDetectedByValidator(t, firstByte, false)
@@ -271,7 +272,7 @@ func TestBlockReaderCanReadData(t *testing.T) {
 		for _, bufSz := range readBufSz {
 			buf := bytes.NewBuffer(make([]byte, 0, 128*1024))
 			onBlock := func(data []byte, crc []byte) error {
-				toWrite := append(data, crc...)
+				toWrite := append(bytes.Clone(data), crc...)
 				n, err := buf.Write(toWrite)
 				require.Equal(t, len(toWrite), n)
 				require.NoError(t, err)
@@ -301,7 +302,7 @@ func TestBlockReaderCanReadData(t *testing.T) {
 			reader := newBlockReader(lr, blockSize, defaultChecksumType)
 			for {
 				n, err = reader.Read(curRead)
-				if err != nil && err != io.EOF {
+				if err != nil && !errors.Is(err, io.EOF) {
 					require.NoError(t, err)
 				}
 				allRead = append(allRead, curRead[:n]...)
@@ -319,7 +320,7 @@ func TestBlockReaderPanicOnCorruptedBlock(t *testing.T) {
 	sz := blockSize*5 + 4
 	buf := bytes.NewBuffer(make([]byte, 0, blockSize*12))
 	onBlock := func(data []byte, crc []byte) error {
-		toWrite := append(data, crc...)
+		toWrite := append(bytes.Clone(data), crc...)
 		n, err := buf.Write(toWrite)
 		require.Equal(t, len(toWrite), n)
 		require.NoError(t, err)
@@ -337,17 +338,17 @@ func TestBlockReaderPanicOnCorruptedBlock(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, writer.Close())
 	written := bytes.Clone(buf.Bytes())
-	for idx := 0; idx < len(written)-16; idx++ {
+	for idx := range len(written) - 16 {
 		func() {
 			curRead := make([]byte, 4)
-			written[idx] = written[idx] + 1
+			written[idx]++
 			lr := io.LimitReader(bytes.NewBuffer(written),
 				int64(len(written)-16))
 			reader := newBlockReader(lr, blockSize, defaultChecksumType)
 			require.Panics(t, func() {
 				for {
 					n, err = reader.Read(curRead)
-					if err != nil && err != io.EOF {
+					if err != nil && !errors.Is(err, io.EOF) {
 						require.NoError(t, err)
 					}
 					if errors.Is(err, io.EOF) {

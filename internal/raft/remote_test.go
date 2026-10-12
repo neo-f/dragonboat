@@ -138,6 +138,7 @@ func TestRemoteBecomeRetryFromSnapshot(t *testing.T) {
 }
 
 func testRemoteBecomeSnapshot(t *testing.T, st remoteStateType) {
+	t.Helper()
 	r := &remote{state: st, match: 10, next: 11}
 	r.becomeSnapshot(12)
 	if r.state != remoteSnapshot {

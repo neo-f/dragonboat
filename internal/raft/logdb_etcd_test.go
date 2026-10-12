@@ -24,6 +24,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	pb "github.com/neo-f/dragonboat/v4/raftpb"
 )
 
@@ -60,7 +61,7 @@ func TestLogDBTerm(t *testing.T) {
 			}()
 			plog.Infof("checking term for index %d", tt.i)
 			term, err := s.Term(tt.i)
-			if err != tt.werr {
+			if !errors.Is(err, tt.werr) {
 				t.Errorf("#%d: err = %v, want %v", i, err, tt.werr)
 			}
 			if term != tt.wterm {
@@ -139,7 +140,7 @@ func TestLogDBCompact(t *testing.T) {
 			entries:     v[1:],
 		}
 		err := s.Compact(tt.i)
-		if err != tt.werr {
+		if !errors.Is(err, tt.werr) {
 			t.Errorf("#%d: err = %v, want %v", i, err, tt.werr)
 		}
 		if s.markerIndex != tt.windex {
@@ -181,7 +182,7 @@ func TestLogDBCreateSnapshot(t *testing.T) {
 		if cerr := s.CreateSnapshot(snap); cerr != nil {
 			t.Fatalf("%v", err)
 		}
-		if err != tt.werr {
+		if !errors.Is(err, tt.werr) {
 			t.Errorf("#%d: err = %v, want %v", i, err, tt.werr)
 		}
 		if !reflect.DeepEqual(snap, tt.wsnap) {
@@ -200,7 +201,7 @@ func TestLogDBApplySnapshot(t *testing.T) {
 	}
 
 	s := &TestLogDB{}
-	//Apply Snapshot successful
+	// Apply Snapshot successful
 	i := 0
 	tt := tests[i]
 	err := s.ApplySnapshot(tt)
@@ -208,11 +209,11 @@ func TestLogDBApplySnapshot(t *testing.T) {
 		t.Errorf("#%d: err = %v, want %v", i, err, nil)
 	}
 
-	//Apply Snapshot fails due to ErrSnapOutOfDate
+	// Apply Snapshot fails due to ErrSnapOutOfDate
 	i = 1
 	tt = tests[i]
 	err = s.ApplySnapshot(tt)
-	if err != ErrSnapshotOutOfDate {
+	if !errors.Is(err, ErrSnapshotOutOfDate) {
 		t.Errorf("#%d: err = %v, want %v", i, err, ErrSnapshotOutOfDate)
 	}
 }
@@ -270,7 +271,7 @@ func TestLogDBAppend(t *testing.T) {
 		}
 		plog.Infof("appending #%d", i)
 		err := s.Append(tt.entries)
-		if err != tt.werr {
+		if !errors.Is(err, tt.werr) {
 			t.Errorf("#%d: err = %v, want %v", i, err, tt.werr)
 		}
 		if !reflect.DeepEqual(s.entries, tt.wentries[1:]) {

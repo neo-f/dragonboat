@@ -44,7 +44,7 @@ func TestParseFilename(t *testing.T) {
 	}
 
 	fs := dvfs.NewMemFS()
-	dbdir := "db-dir"
+	dbdir := testDBDir
 	for idx, tt := range tests {
 		fn := makeFilename(fs, dbdir, tt.fileType, tt.fileNum)
 		ft, logNum, ok := parseFilename(fs, fn)
@@ -58,7 +58,7 @@ func TestParseFilename(t *testing.T) {
 
 func TestMakeBootstrapFilename(t *testing.T) {
 	fs := dvfs.NewMemFS()
-	dbdir := "db-dir"
+	dbdir := testDBDir
 	fn := makeBootstrapFilename(fs, dbdir, 2, 3, false)
 	require.Equal(t, "db-dir/BOOTSTRAP-2-3", fn)
 	fn = makeBootstrapFilename(fs, dbdir, 2, 3, true)
@@ -68,10 +68,10 @@ func TestMakeBootstrapFilename(t *testing.T) {
 func TestParseBootstrapFilename(t *testing.T) {
 	fn := "BOOTSTRAP-2-3"
 	shardID, replicaID, ok := parseBootstrapFilename(fn)
-	require.Equal(t, true, ok)
+	require.True(t, ok)
 	require.Equal(t, uint64(2), shardID)
 	require.Equal(t, uint64(3), replicaID)
 	fn = "BOOTSTRAP-2-"
 	_, _, ok = parseBootstrapFilename(fn)
-	require.Equal(t, false, ok)
+	require.False(t, ok)
 }

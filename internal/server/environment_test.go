@@ -35,6 +35,9 @@ const (
 	testBinVer       = raftio.LogDBBinVersion
 	testAddress      = "localhost:1111"
 	testDeploymentID = 100
+	testPebbleLogDB  = "pebble"
+	testTeeLogDB     = "tee"
+	testRocksDBLogDB = "rocksdb"
 )
 
 func getTestNodeHostConfig(dir string) config.NodeHostConfig {
@@ -84,7 +87,7 @@ func TestCheckNodeHostDirWorksWhenEverythingMatches(t *testing.T) {
 			raftio.LogDBBinVersion, testName)
 		require.NoError(t, err, "check node host dir failed")
 	}()
-	reportLeakedFD(fs, t)
+	reportLeakedFD(t, fs)
 }
 
 func TestRaftAddressIsAllowedToChangeWhenRequested(t *testing.T) {
@@ -128,6 +131,7 @@ func testNodeHostDirectoryDetectsMismatches(t *testing.T,
 	addr string, hostname string, binVer uint32, name string,
 	hardHashMismatch bool, addressByNodeHostID bool, expErr error,
 	fs vfs.IFS) {
+	t.Helper()
 	c := getTestNodeHostConfig(t.TempDir())
 	env, err := NewEnv(c, fs)
 	require.NoError(t, err, "failed to new environment")
@@ -158,7 +162,7 @@ func testNodeHostDirectoryDetectsMismatches(t *testing.T,
 	require.NoError(t, err, "failed to create flag file")
 	err = env.CheckNodeHostDir(cfg, testBinVer, testLogDBName)
 	assert.Equal(t, expErr, err, "expect err %v, got %v", expErr, err)
-	reportLeakedFD(fs, t)
+	reportLeakedFD(t, fs)
 }
 
 func TestCanDetectMismatchedHostname(t *testing.T) {
@@ -214,7 +218,7 @@ func TestLockFileCanBeLockedAndUnlocked(t *testing.T) {
 	require.NoError(t, err, "failed to lock the directory")
 	err = env.Close()
 	require.NoError(t, err, "failed to stop env")
-	reportLeakedFD(fs, t)
+	reportLeakedFD(t, fs)
 }
 
 func TestNodeHostIDCanBeGenerated(t *testing.T) {
@@ -277,7 +281,7 @@ func TestRemoveSavedSnapshots(t *testing.T) {
 		assert.Contains(t, []string{"mydata-1", "mydata-2"}, fi.Name(),
 			"unexpected dir found %s", fi.Name())
 	}
-	reportLeakedFD(fs, t)
+	reportLeakedFD(t, fs)
 }
 
 func TestWALDirCanBeSet(t *testing.T) {
@@ -308,16 +312,16 @@ func TestCompatibleLogDBType(t *testing.T) {
 	}{
 		{"sharded-rocksdb", "sharded-pebble", true},
 		{"sharded-pebble", "sharded-rocksdb", true},
-		{"pebble", "rocksdb", true},
-		{"rocksdb", "pebble", true},
-		{"pebble", "tee", false},
-		{"tee", "pebble", false},
-		{"rocksdb", "tee", false},
-		{"tee", "rocksdb", false},
-		{"tee", "tee", true},
-		{"", "tee", false},
-		{"tee", "", false},
-		{"tee", "inmem", false},
+		{testPebbleLogDB, testRocksDBLogDB, true},
+		{testRocksDBLogDB, testPebbleLogDB, true},
+		{testPebbleLogDB, testTeeLogDB, false},
+		{testTeeLogDB, testPebbleLogDB, false},
+		{testRocksDBLogDB, testTeeLogDB, false},
+		{testTeeLogDB, testRocksDBLogDB, false},
+		{testTeeLogDB, testTeeLogDB, true},
+		{"", testTeeLogDB, false},
+		{testTeeLogDB, "", false},
+		{testTeeLogDB, "inmem", false},
 	}
 	for idx, tt := range tests {
 		r := compatibleLogDBType(tt.saved, tt.name)

@@ -31,9 +31,9 @@ import (
 func TestVersionSetCanBeCreated(t *testing.T) {
 	var vs versionSet
 	var mu sync.Mutex
-	dirname := "db-dir"
+	dirname := testDBDir
 	fs := dvfs.NewMemFS()
-	defer dvfs.ReportLeakedFD(fs, t)
+	defer dvfs.ReportLeakedFD(t, fs)
 	opt := &Options{MaxManifestFileSize: MaxManifestFileSize, FS: fs}
 	require.NoError(t, fs.MkdirAll(dirname, 0700))
 	dir, err := fs.OpenDir(dirname)
@@ -56,12 +56,13 @@ func TestVersionSetCanBeApplied(t *testing.T) {
 }
 
 func testVersionSetCanBeApplied(t *testing.T, fs vfs.FS) {
+	t.Helper()
 	var vs versionSet
 	defer func() {
 		require.NoError(t, vs.close())
 	}()
 	var mu sync.Mutex
-	dirname := "db-dir"
+	dirname := testDBDir
 	opt := &Options{MaxManifestFileSize: MaxManifestFileSize, FS: fs}
 	require.NoError(t, fs.MkdirAll(dirname, 0700))
 	dir, err := fs.OpenDir(dirname)
@@ -87,7 +88,7 @@ func testVersionSetCanBeApplied(t *testing.T, fs vfs.FS) {
 	mu.Unlock()
 
 	v := vs.currentVersion()
-	require.Equal(t, 1, len(v.files))
+	require.Len(t, v.files, 1)
 	require.Equal(t, int32(1), v.refcnt)
 	f, ok := v.files[2]
 	require.True(t, ok)
@@ -109,7 +110,7 @@ func testVersionSetCanBeApplied(t *testing.T, fs vfs.FS) {
 	mu.Unlock()
 
 	v = vs.currentVersion()
-	require.Equal(t, 1, len(v.files))
+	require.Len(t, v.files, 1)
 	require.Equal(t, int32(1), v.refcnt)
 	_, ok2 := v.files[2]
 	f3, ok3 := v.files[3]
@@ -117,7 +118,7 @@ func testVersionSetCanBeApplied(t *testing.T, fs vfs.FS) {
 	require.True(t, ok3)
 	require.Equal(t, int32(1), f3.refs)
 	require.Equal(t, ve2.nextFileNum, vs.nextFileNum)
-	require.Equal(t, 1, len(vs.obsoleteTables))
+	require.Len(t, vs.obsoleteTables, 1)
 	require.Equal(t, fileNum(2), vs.obsoleteTables[0].fileNum)
 	require.Equal(t, fileNum(1), vs.manifestFileNum)
 }
@@ -125,9 +126,9 @@ func testVersionSetCanBeApplied(t *testing.T, fs vfs.FS) {
 func TestSwitchManifestFile(t *testing.T) {
 	var vs versionSet
 	var mu sync.Mutex
-	dirname := "db-dir"
+	dirname := testDBDir
 	fs := dvfs.NewMemFS()
-	defer dvfs.ReportLeakedFD(fs, t)
+	defer dvfs.ReportLeakedFD(t, fs)
 	opt := &Options{MaxManifestFileSize: 1, FS: fs}
 	require.NoError(t, fs.MkdirAll(dirname, 0700))
 	dir, err := fs.OpenDir(dirname)
@@ -154,24 +155,24 @@ func TestSwitchManifestFile(t *testing.T) {
 	mu.Unlock()
 
 	require.Equal(t, fileNum(3), vs.manifestFileNum)
-	require.Equal(t, 1, len(vs.obsoleteManifests))
+	require.Len(t, vs.obsoleteManifests, 1)
 	require.NoError(t, vs.close())
 }
 
 func TestLoadManifest(t *testing.T) {
 	fs := dvfs.NewMemFS()
-	defer dvfs.ReportLeakedFD(fs, t)
+	defer dvfs.ReportLeakedFD(t, fs)
 	testVersionSetCanBeApplied(t, fs)
 	var vs versionSet
 	defer func() {
 		require.NoError(t, vs.close())
 	}()
 	var mu sync.Mutex
-	dirname := "db-dir"
+	dirname := testDBDir
 	opt := &Options{MaxManifestFileSize: MaxManifestFileSize, FS: fs}
 	require.NoError(t, vs.load(dirname, opt, &mu))
 	v := vs.currentVersion()
-	require.Equal(t, 1, len(v.files))
+	require.Len(t, v.files, 1)
 	require.Equal(t, int32(1), v.refcnt)
 	_, ok2 := v.files[2]
 	f3, ok3 := v.files[3]
@@ -179,7 +180,7 @@ func TestLoadManifest(t *testing.T) {
 	require.True(t, ok3)
 	require.Equal(t, int32(1), f3.refs)
 	require.Equal(t, fileNum(4), vs.nextFileNum)
-	require.Equal(t, 0, len(vs.obsoleteTables))
+	require.Empty(t, vs.obsoleteTables)
 	require.Equal(t, fileNum(1), vs.manifestFileNum)
 	require.Nil(t, vs.manifest)
 }

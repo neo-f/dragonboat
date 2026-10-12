@@ -28,7 +28,6 @@ import (
 	"os/exec"
 	"runtime"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -64,6 +63,8 @@ import (
 
 const (
 	defaultTestPort = 26001
+	testGossipAddr1 = "127.0.0.1:25001"
+	testGossipAddr2 = "127.0.0.1:25002"
 	testNodeHostID1 = "123e4567-e89b-12d3-a456-426614174000"
 	testNodeHostID2 = "123e4567-e89b-12d3-a456-426614174001"
 )
@@ -159,8 +160,9 @@ func getTestExpertConfig(fs vfs.IFS) config.ExpertConfig {
 	return cfg
 }
 
-func reportLeakedFD(fs vfs.IFS, t *testing.T) {
-	vfs.ReportLeakedFD(fs, t)
+func reportLeakedFD(t *testing.T, fs vfs.IFS) {
+	t.Helper()
+	vfs.ReportLeakedFD(t, fs)
 }
 
 func getTestNodeHostConfig(fs vfs.IFS, dir string) *config.NodeHostConfig {
@@ -186,6 +188,7 @@ func getTestConfig() *config.Config {
 }
 
 func waitNodeInfoEvent(t *testing.T, f func() []raftio.NodeInfo, count int) {
+	t.Helper()
 	for range 1000 {
 		if len(f()) == count {
 			return
@@ -198,6 +201,7 @@ func waitNodeInfoEvent(t *testing.T, f func() []raftio.NodeInfo, count int) {
 func waitSnapshotInfoEvent(t *testing.T,
 	f func() []raftio.SnapshotInfo,
 	count int) {
+	t.Helper()
 	for range 1000 {
 		if len(f()) == count {
 			return
@@ -474,6 +478,7 @@ func (n *noopLogDB) RemoveEntriesTo(shardID uint64,
 func (n *noopLogDB) CompactEntriesTo(shardID uint64,
 	replicaID uint64,
 	index uint64) (<-chan struct{}, error) {
+	//nolint:nilnil // deliberate no-op stub: nothing to compact, nil channel signals done
 	return nil, nil
 }
 func (n *noopLogDB) RemoveNodeData(shardID uint64, replicaID uint64) error {
@@ -517,6 +522,7 @@ type testOption struct {
 }
 
 func createSingleTestNode(t *testing.T, to *testOption, nh *NodeHost) {
+	t.Helper()
 	if to.createSM == nil &&
 		to.createConcurrentSM == nil &&
 		to.createOnDiskSM == nil && !to.defaultTestNode && !to.fakeDiskNode {
@@ -565,6 +571,7 @@ func createSingleTestNode(t *testing.T, to *testOption, nh *NodeHost) {
 }
 
 func runNodeHostTest(t *testing.T, to *testOption, fs vfs.IFS) {
+	t.Helper()
 	func() {
 		if !to.fsErrorInjection {
 			defer leaktest.AfterTest(t)()
@@ -627,28 +634,29 @@ func runNodeHostTest(t *testing.T, to *testOption, fs vfs.IFS) {
 			}
 		}
 	}()
-	reportLeakedFD(fs, t)
+	reportLeakedFD(t, fs)
 }
 
 func createProposalsToTriggerSnapshot(t *testing.T,
 	nh *NodeHost,
 	count uint64,
 	timeoutExpected bool) {
+	t.Helper()
 	for range count {
 		pto := lpto(nh)
 		ctx, cancel := context.WithTimeout(t.Context(), pto)
 		cs, err := nh.SyncGetSession(ctx, 1)
 		if err != nil {
-			if err == ErrTimeout {
+			if errors.Is(err, ErrTimeout) {
 				cancel()
 				return
 			}
 			require.NoError(t, err, "unexpected error")
 		}
-		//time.Sleep(100 * time.Millisecond)
+		// time.Sleep(100 * time.Millisecond)
 		err = nh.SyncCloseSession(ctx, cs)
 		if err != nil {
-			if err == ErrTimeout {
+			if errors.Is(err, ErrTimeout) {
 				cancel()
 				return
 			}
@@ -664,10 +672,11 @@ func createProposalsToTriggerSnapshot(t *testing.T,
 func runNodeHostTestDC(t *testing.T,
 	f func(testDir string),
 	fs vfs.IFS) {
+	t.Helper()
 	defer leaktest.AfterTest(t)()
 	testDir := t.TempDir()
 	f(testDir)
-	reportLeakedFD(fs, t)
+	reportLeakedFD(t, fs)
 }
 
 type testLogDBFactory struct {
@@ -710,7 +719,7 @@ func TestTCPTransportIsUsedByDefault(t *testing.T) {
 	fs := vfs.GetTestFS()
 	to := &testOption{
 		tf: func(nh *NodeHost) {
-			tt := nh.transport.(*transport.Transport)
+			tt, _ := nh.transport.(*transport.Transport)
 			assert.Equal(t, transport.TCPTransportName, tt.GetTrans().Name())
 		},
 		noElection: true,
@@ -739,7 +748,7 @@ func TestTransportFactoryIsStillHonored(t *testing.T) {
 			return nhc
 		},
 		tf: func(nh *NodeHost) {
-			tt := nh.transport.(*transport.Transport)
+			tt, _ := nh.transport.(*transport.Transport)
 			assert.Equal(t, transport.NOOPRaftName, tt.GetTrans().Name())
 		},
 		noElection: true,
@@ -756,7 +765,7 @@ func TestTransportFactoryCanBeSet(t *testing.T) {
 			return nhc
 		},
 		tf: func(nh *NodeHost) {
-			tt := nh.transport.(*transport.Transport)
+			tt, _ := nh.transport.(*transport.Transport)
 			assert.Equal(t, transport.NOOPRaftName, tt.GetTrans().Name())
 		},
 		noElection: true,
@@ -838,7 +847,7 @@ func TestMediumSizedClusterGossip(t *testing.T) {
 			Gossip: config.GossipConfig{
 				BindAddress:      fmt.Sprintf("127.0.0.1:%d", 25000+i*10+1),
 				AdvertiseAddress: fmt.Sprintf("127.0.0.1:%d", 25000+i*10+1),
-				Seed:             []string{"127.0.0.1:25001", "127.0.0.1:25011"},
+				Seed:             []string{testGossipAddr1, "127.0.0.1:25011"},
 			},
 		}
 		nh, err := NewNodeHost(cfg)
@@ -860,6 +869,7 @@ func TestCustomTransportCanGoWithoutNodeHostID(t *testing.T) {
 func testDefaultNodeRegistryEnabled(t *testing.T,
 	addressByNodeHostID bool,
 	factory config.TransportFactory) {
+	t.Helper()
 	fs := vfs.GetTestFS()
 	testDir := t.TempDir()
 	datadir1 := fs.PathJoin(testDir, "nh1")
@@ -878,9 +888,9 @@ func testDefaultNodeRegistryEnabled(t *testing.T,
 	}
 	if addressByNodeHostID {
 		nhc1.Gossip = config.GossipConfig{
-			BindAddress:      "127.0.0.1:25001",
-			AdvertiseAddress: "127.0.0.1:25001",
-			Seed:             []string{"127.0.0.1:25002"},
+			BindAddress:      testGossipAddr1,
+			AdvertiseAddress: testGossipAddr1,
+			Seed:             []string{testGossipAddr2},
 		}
 	}
 	nhc2 := config.NodeHostConfig{
@@ -895,9 +905,9 @@ func testDefaultNodeRegistryEnabled(t *testing.T,
 	}
 	if addressByNodeHostID {
 		nhc2.Gossip = config.GossipConfig{
-			BindAddress:      "127.0.0.1:25002",
-			AdvertiseAddress: "127.0.0.1:25002",
-			Seed:             []string{"127.0.0.1:25001"},
+			BindAddress:      testGossipAddr2,
+			AdvertiseAddress: testGossipAddr2,
+			Seed:             []string{testGossipAddr1},
 		}
 	}
 	nhid1, err := id.NewUUID(testNodeHostID1)
@@ -969,9 +979,9 @@ func TestNodeHostRegistry(t *testing.T) {
 		},
 	}
 	nhc1.Gossip = config.GossipConfig{
-		BindAddress:      "127.0.0.1:25001",
-		AdvertiseAddress: "127.0.0.1:25001",
-		Seed:             []string{"127.0.0.1:25002"},
+		BindAddress:      testGossipAddr1,
+		AdvertiseAddress: testGossipAddr1,
+		Seed:             []string{testGossipAddr2},
 	}
 	nhc2 := config.NodeHostConfig{
 		NodeHostDir:                datadir2,
@@ -984,9 +994,9 @@ func TestNodeHostRegistry(t *testing.T) {
 		},
 	}
 	nhc2.Gossip = config.GossipConfig{
-		BindAddress:      "127.0.0.1:25002",
-		AdvertiseAddress: "127.0.0.1:25002",
-		Seed:             []string{"127.0.0.1:25001"},
+		BindAddress:      testGossipAddr2,
+		AdvertiseAddress: testGossipAddr2,
+		Seed:             []string{testGossipAddr1},
 	}
 	nhid1, err := id.NewUUID(testNodeHostID1)
 	require.NoError(t, err, "failed to parse nhid")
@@ -1094,14 +1104,14 @@ func TestGossipCanHandleDynamicRaftAddress(t *testing.T) {
 	require.NoError(t, err, "failed to parse nhid")
 	nhc2.NodeHostID = nhid2.String()
 	nhc1.Gossip = config.GossipConfig{
-		BindAddress:      "127.0.0.1:25001",
-		AdvertiseAddress: "127.0.0.1:25001",
-		Seed:             []string{"127.0.0.1:25002"},
+		BindAddress:      testGossipAddr1,
+		AdvertiseAddress: testGossipAddr1,
+		Seed:             []string{testGossipAddr2},
 	}
 	nhc2.Gossip = config.GossipConfig{
-		BindAddress:      "127.0.0.1:25002",
-		AdvertiseAddress: "127.0.0.1:25002",
-		Seed:             []string{"127.0.0.1:25001"},
+		BindAddress:      testGossipAddr2,
+		AdvertiseAddress: testGossipAddr2,
+		Seed:             []string{testGossipAddr1},
 	}
 	nh1, err := NewNodeHost(nhc1)
 	require.NoError(t, err, "failed to create nh")
@@ -1464,6 +1474,7 @@ func singleConcurrentNodeHostTest(t *testing.T,
 	snapshotEntry uint64,
 	concurrent bool,
 	fs vfs.IFS) {
+	t.Helper()
 	testDir := t.TempDir()
 	func() {
 		defer leaktest.AfterTest(t)()
@@ -1478,12 +1489,13 @@ func singleConcurrentNodeHostTest(t *testing.T,
 		waitForLeaderToBeElected(t, nh, 1+nhc.Expert.Engine.ApplyShards)
 		tf(t, nh)
 	}()
-	reportLeakedFD(fs, t)
+	reportLeakedFD(t, fs)
 }
 
 func twoFakeDiskNodeHostTest(t *testing.T,
 	tf func(t *testing.T, nh1 *NodeHost, nh2 *NodeHost),
 	fs vfs.IFS) {
+	t.Helper()
 	testDir := t.TempDir()
 	func() {
 		defer leaktest.AfterTest(t)()
@@ -1498,7 +1510,7 @@ func twoFakeDiskNodeHostTest(t *testing.T,
 		}()
 		tf(t, nh1, nh2)
 	}()
-	reportLeakedFD(fs, t)
+	reportLeakedFD(t, fs)
 }
 
 func createFakeDiskTwoTestNodeHosts(addr1 string,
@@ -1618,6 +1630,7 @@ func rateLimitedTwoNodeHostTest(t *testing.T,
 		n1 *tests.NoOP,
 		n2 *tests.NoOP),
 	fs vfs.IFS) {
+	t.Helper()
 	testDir := t.TempDir()
 	func() {
 		nh1dir := fs.PathJoin(testDir, "nh1")
@@ -1632,10 +1645,11 @@ func rateLimitedTwoNodeHostTest(t *testing.T,
 		}()
 		tf(t, nh1, nh2, n1, n2)
 	}()
-	reportLeakedFD(fs, t)
+	reportLeakedFD(t, fs)
 }
 
 func waitForLeaderToBeElected(t *testing.T, nh *NodeHost, shardID uint64) {
+	t.Helper()
 	for range 200 {
 		_, term, ready, err := nh.GetLeaderID(shardID)
 		if err == nil && ready {
@@ -1663,7 +1677,7 @@ func TestJoinedShardCanBeRestartedOrJoinedAgain(t *testing.T) {
 				if err == nil {
 					return
 				}
-				if err == ErrShardAlreadyExist {
+				if errors.Is(err, ErrShardAlreadyExist) {
 					time.Sleep(5 * time.Millisecond)
 					continue
 				} else {
@@ -1702,7 +1716,7 @@ func TestCompactionCanBeRequested(t *testing.T) {
 			require.NoError(t, err, "failed to request snapshot")
 			for range 100 {
 				op, err := nh.RequestCompaction(1, 1)
-				if err == ErrRejected {
+				if errors.Is(err, ErrRejected) {
 					time.Sleep(100 * time.Millisecond)
 					continue
 				}
@@ -1896,19 +1910,19 @@ func TestInvalidContextDeadlineIsReported(t *testing.T) {
 			defer cancel()
 			cs := nh.GetNoOPSession(1)
 			_, err = nh.SyncPropose(ctx, cs, make([]byte, 1))
-			assert.ErrorIs(t, err, ErrTimeoutTooSmall)
+			require.ErrorIs(t, err, ErrTimeoutTooSmall)
 			_, err = nh.SyncRead(ctx, 1, nil)
-			assert.ErrorIs(t, err, ErrTimeoutTooSmall)
+			require.ErrorIs(t, err, ErrTimeoutTooSmall)
 			_, err = nh.SyncGetSession(ctx, 1)
-			assert.ErrorIs(t, err, ErrTimeoutTooSmall)
+			require.ErrorIs(t, err, ErrTimeoutTooSmall)
 			err = nh.SyncCloseSession(ctx, rcs)
-			assert.ErrorIs(t, err, ErrTimeoutTooSmall)
+			require.ErrorIs(t, err, ErrTimeoutTooSmall)
 			_, err = nh.SyncRequestSnapshot(ctx, 1, DefaultSnapshotOption)
-			assert.ErrorIs(t, err, ErrTimeoutTooSmall)
+			require.ErrorIs(t, err, ErrTimeoutTooSmall)
 			err = nh.SyncRequestDeleteReplica(ctx, 1, 1, 0)
-			assert.ErrorIs(t, err, ErrTimeoutTooSmall)
+			require.ErrorIs(t, err, ErrTimeoutTooSmall)
 			err = nh.SyncRequestAddReplica(ctx, 1, 100, "a1.com:12345", 0)
-			assert.ErrorIs(t, err, ErrTimeoutTooSmall)
+			require.ErrorIs(t, err, ErrTimeoutTooSmall)
 			err = nh.SyncRequestAddNonVoting(ctx, 1, 100, "a1.com:12345", 0)
 			assert.ErrorIs(t, err, ErrTimeoutTooSmall)
 		},
@@ -1923,26 +1937,26 @@ func TestErrShardNotFoundCanBeReturned(t *testing.T) {
 		tf: func(nh *NodeHost) {
 			pto := lpto(nh)
 			_, _, _, err := nh.GetLeaderID(1234)
-			assert.ErrorIs(t, err, ErrShardNotFound)
+			require.ErrorIs(t, err, ErrShardNotFound)
 			_, err = nh.StaleRead(1234, nil)
-			assert.ErrorIs(t, err, ErrShardNotFound)
+			require.ErrorIs(t, err, ErrShardNotFound)
 			_, err = nh.RequestSnapshot(1234, DefaultSnapshotOption, pto)
-			assert.ErrorIs(t, err, ErrShardNotFound)
+			require.ErrorIs(t, err, ErrShardNotFound)
 			_, err = nh.RequestDeleteReplica(1234, 10, 0, pto)
-			assert.ErrorIs(t, err, ErrShardNotFound)
+			require.ErrorIs(t, err, ErrShardNotFound)
 			_, err = nh.RequestAddReplica(1234, 10, "a1", 0, pto)
-			assert.ErrorIs(t, err, ErrShardNotFound)
+			require.ErrorIs(t, err, ErrShardNotFound)
 			_, err = nh.RequestAddNonVoting(1234, 10, "a1", 0, pto)
-			assert.ErrorIs(t, err, ErrShardNotFound)
+			require.ErrorIs(t, err, ErrShardNotFound)
 			err = nh.RequestLeaderTransfer(1234, 10)
-			assert.ErrorIs(t, err, ErrShardNotFound)
+			require.ErrorIs(t, err, ErrShardNotFound)
 			_, err = nh.GetNodeUser(1234)
-			assert.ErrorIs(t, err, ErrShardNotFound)
+			require.ErrorIs(t, err, ErrShardNotFound)
 			cs := nh.GetNoOPSession(1234)
 			_, err = nh.propose(cs, make([]byte, 1), pto)
-			assert.ErrorIs(t, err, ErrShardNotFound)
+			require.ErrorIs(t, err, ErrShardNotFound)
 			_, _, err = nh.readIndex(1234, pto)
-			assert.ErrorIs(t, err, ErrShardNotFound)
+			require.ErrorIs(t, err, ErrShardNotFound)
 			err = nh.stopNode(1234, 1, true)
 			assert.ErrorIs(t, err, ErrShardNotFound)
 		},
@@ -1974,10 +1988,10 @@ func TestRegisterASessionTwiceWillBeReported(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			defer cancel()
 			cs, err := nh.SyncGetSession(ctx, 1)
-			assert.NoError(t, err, "failed to get client session")
+			require.NoError(t, err, "failed to get client session")
 			cs.PrepareForRegister()
 			rs, err := nh.ProposeSession(cs, pto)
-			assert.NoError(t, err, "failed to propose client session")
+			require.NoError(t, err, "failed to propose client session")
 			r := <-rs.ResultC()
 			assert.True(t, r.Rejected(),
 				"failed to reject the cs registeration")
@@ -1995,9 +2009,9 @@ func TestUnregisterNotRegisterClientSessionWillBeReported(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			defer cancel()
 			cs, err := nh.SyncGetSession(ctx, 1)
-			assert.NoError(t, err, "failed to get client session")
+			require.NoError(t, err, "failed to get client session")
 			err = nh.SyncCloseSession(ctx, cs)
-			assert.NoError(t, err, "failed to unregister the client session")
+			require.NoError(t, err, "failed to unregister the client session")
 			err = nh.SyncCloseSession(ctx, cs)
 			assert.ErrorIs(t, err, ErrRejected, "failed to reject the request")
 		},
@@ -2051,6 +2065,7 @@ func TestSnapshotFilePayloadChecksumIsSaved(t *testing.T) {
 func testZombieSnapshotDirWillBeDeletedDuringAddShard(t *testing.T,
 	dirName string,
 	fs vfs.IFS) {
+	t.Helper()
 	var z1 string
 	to := &testOption{
 		defaultTestNode: true,
@@ -2129,7 +2144,8 @@ func TestNodeHostSyncIOAPIs(t *testing.T) {
 			data, err := nh.SyncRead(ctx, 1, make([]byte, 128))
 			require.NoError(t, err, "make linearizable read failed")
 			require.NotNil(t, data)
-			require.NotEmpty(t, data.([]byte), "failed to get result")
+			dataBytes, _ := data.([]byte)
+			require.NotEmpty(t, dataBytes, "failed to get result")
 			require.NoError(t, nh.StopShard(1), "failed to stop shard 2")
 			listener, ok := nh.events.sys.ul.(*testSysEventListener)
 			require.True(t, ok, "failed to get the system event listener")
@@ -2193,7 +2209,7 @@ func TestOrderedMembershipChange(t *testing.T) {
 				require.NoError(t, err, "get membership failed")
 				err = nh.SyncRequestAddReplica(ctx,
 					1, 2, "localhost:25000", m.ConfigChangeID+1)
-				assert.Error(t, err, "unexpectedly completed")
+				require.Error(t, err, "unexpectedly completed")
 			}
 			{
 				ctx, cancel := context.WithTimeout(t.Context(), 2*pto)
@@ -2281,10 +2297,10 @@ func TestNodeHostGetNodeUser(t *testing.T) {
 		defaultTestNode: true,
 		tf: func(nh *NodeHost) {
 			n, err := nh.GetNodeUser(1)
-			assert.NoError(t, err, "failed to get NodeUser")
+			require.NoError(t, err, "failed to get NodeUser")
 			assert.NotNil(t, n, "got a nil NodeUser")
 			n, err = nh.GetNodeUser(123)
-			assert.ErrorIs(t, err, ErrShardNotFound, "didn't return expected err")
+			require.ErrorIs(t, err, ErrShardNotFound, "didn't return expected err")
 			assert.Nil(t, n, "got unexpected node user")
 		},
 	}
@@ -2301,7 +2317,7 @@ func TestNodeHostNodeUserPropose(t *testing.T) {
 			require.NoError(t, err, "failed to get NodeUser")
 			cs := nh.GetNoOPSession(1)
 			rs, err := n.Propose(cs, make([]byte, 16), pto)
-			assert.NoError(t, err, "failed to make propose")
+			require.NoError(t, err, "failed to make propose")
 			v := <-rs.ResultC()
 			assert.True(t, v.Completed(), "failed to complete proposal")
 		},
@@ -2318,7 +2334,7 @@ func TestNodeHostNodeUserRead(t *testing.T) {
 			n, err := nh.GetNodeUser(1)
 			require.NoError(t, err, "failed to get NodeUser")
 			rs, err := n.ReadIndex(pto)
-			assert.NoError(t, err, "failed to read index")
+			require.NoError(t, err, "failed to read index")
 			v := <-rs.ResultC()
 			assert.True(t, v.Completed(), "failed to complete read index")
 		},
@@ -2340,9 +2356,9 @@ func TestNodeHostAddNonVotingRemoveNode(t *testing.T) {
 			defer cancel()
 			membership, err := nh.SyncGetShardMembership(ctx, 1)
 			require.NoError(t, err, "failed to get shard membership")
-			require.Equal(t, 1, len(membership.Nodes), "unexpected nodes len")
-			require.Equal(t, 0, len(membership.Removed), "unexpected removed len")
-			require.Equal(t, 1, len(membership.NonVotings), "unexpected nodes len")
+			require.Len(t, membership.Nodes, 1, "unexpected nodes len")
+			require.Empty(t, membership.Removed, "unexpected removed len")
+			require.Len(t, membership.NonVotings, 1, "unexpected nodes len")
 			_, ok := membership.NonVotings[2]
 			require.True(t, ok, "node 2 not added")
 			// remove it
@@ -2354,9 +2370,9 @@ func TestNodeHostAddNonVotingRemoveNode(t *testing.T) {
 			defer cancel()
 			membership, err = nh.SyncGetShardMembership(ctx, 1)
 			require.NoError(t, err, "failed to get shard membership")
-			require.Equal(t, 1, len(membership.Nodes), "unexpected nodes len")
-			require.Equal(t, 1, len(membership.Removed), "unexpected removed len")
-			require.Equal(t, 0, len(membership.NonVotings), "unexpected nodes len")
+			require.Len(t, membership.Nodes, 1, "unexpected nodes len")
+			require.Len(t, membership.Removed, 1, "unexpected removed len")
+			require.Empty(t, membership.NonVotings, "unexpected nodes len")
 			_, ok = membership.Removed[2]
 			require.True(t, ok, "node 2 not removed")
 		},
@@ -2428,7 +2444,8 @@ func TestStaleReadOnUninitializedNodeReturnError(t *testing.T) {
 			}
 			v, err := nh.StaleRead(1, nil)
 			require.NoError(t, err, "stale read failed")
-			require.Len(t, v.([]byte), 8, "unexpected result")
+			vb, _ := v.([]byte)
+			require.Len(t, vb, 8, "unexpected result")
 		},
 		noElection: true,
 	}
@@ -2458,10 +2475,12 @@ func TestStartReplicaWaitForReadiness(t *testing.T) {
 					}
 					time.Sleep(time.Millisecond * 100)
 				}
-				require.NotNil(t, n, "failed to get the node")
-				require.False(t, n.initialized(), "node unexpectedly initialized")
+				if !assert.NotNil(t, n, "failed to get the node") {
+					return
+				}
+				assert.False(t, n.initialized(), "node unexpectedly initialized")
 				_, err := nh.StaleRead(1, nil)
-				require.ErrorIs(t, err, ErrShardNotInitialized,
+				assert.ErrorIs(t, err, ErrShardNotInitialized,
 					"expected to return ErrShardNotInitialized")
 			}()
 
@@ -2479,13 +2498,15 @@ func TestStartReplicaWaitForReadiness(t *testing.T) {
 
 			v, err := nh.StaleRead(1, nil)
 			require.NoError(t, err, "stale read failed")
-			require.Len(t, v.([]byte), 8, "unexpected result")
+			vb, _ := v.([]byte)
+			require.Len(t, vb, 8, "unexpected result")
 		},
 	}
 	runNodeHostTest(t, to, fs)
 }
 
 func testOnDiskStateMachineCanTakeDummySnapshot(t *testing.T, compressed bool) {
+	t.Helper()
 	fs := vfs.GetTestFS()
 	to := &testOption{
 		fakeDiskNode: true,
@@ -2546,6 +2567,7 @@ func TestOnDiskStateMachineCanTakeDummySnapshot(t *testing.T) {
 func TestOnDiskSMCanStreamSnapshot(t *testing.T) {
 	fs := vfs.GetTestFS()
 	tf := func(t *testing.T, nh1 *NodeHost, nh2 *NodeHost) {
+		t.Helper()
 		rc := config.Config{
 			ShardID:                 1,
 			ReplicaID:               1,
@@ -2635,10 +2657,8 @@ func TestOnDiskSMCanStreamSnapshot(t *testing.T) {
 				require.True(t, shrunk, "snapshot %d is not shrunk", ss.Index)
 				if ssIndex == 0 {
 					ssIndex = ss.Index
-				} else {
-					if ssIndex != ss.Index {
-						break
-					}
+				} else if ssIndex != ss.Index {
+					break
 				}
 			} else if i%50 == 0 {
 				time.Sleep(100 * time.Millisecond)
@@ -2669,6 +2689,7 @@ func TestConcurrentStateMachineLookup(t *testing.T) {
 	fs := vfs.GetTestFS()
 	done := uint32(0)
 	tf := func(t *testing.T, nh *NodeHost) {
+		t.Helper()
 		nhc := nh.NodeHostConfig()
 		shardID := 1 + nhc.Expert.Engine.ApplyShards
 		count := uint32(0)
@@ -2680,7 +2701,7 @@ func TestConcurrentStateMachineLookup(t *testing.T) {
 				session := nh.GetNoOPSession(shardID)
 				_, err := nh.SyncPropose(ctx, session, []byte("test"))
 				cancel()
-				if err == ErrTimeout {
+				if errors.Is(err, ErrTimeout) {
 					continue
 				}
 				require.NoError(t, err, "failed to make proposal")
@@ -2708,7 +2729,8 @@ func TestConcurrentStateMachineLookup(t *testing.T) {
 				if err != nil {
 					continue
 				}
-				v := binary.LittleEndian.Uint32(result.([]byte))
+				rb, _ := result.([]byte)
+				v := binary.LittleEndian.Uint32(rb)
 				if v%2 == 1 {
 					atomic.AddUint32(&count, 1)
 					atomic.StoreUint32(&done, 1)
@@ -2726,6 +2748,7 @@ func TestConcurrentStateMachineLookup(t *testing.T) {
 func TestConcurrentStateMachineSaveSnapshot(t *testing.T) {
 	fs := vfs.GetTestFS()
 	tf := func(t *testing.T, nh *NodeHost) {
+		t.Helper()
 		nhc := nh.NodeHostConfig()
 		shardID := 1 + nhc.Expert.Engine.ApplyShards
 		nhi := nh.GetNodeHostInfo(DefaultNodeHostInfoOption)
@@ -2758,6 +2781,7 @@ func TestConcurrentStateMachineSaveSnapshot(t *testing.T) {
 func TestErrorCanBeReturnedWhenLookingUpConcurrentStateMachine(t *testing.T) {
 	fs := vfs.GetTestFS()
 	tf := func(t *testing.T, nh *NodeHost) {
+		t.Helper()
 		nhc := nh.NodeHostConfig()
 		shardID := 1 + nhc.Expert.Engine.ApplyShards
 		for range 100 {
@@ -2775,6 +2799,7 @@ func TestRegularStateMachineDoesNotAllowConucrrentUpdate(t *testing.T) {
 	fs := vfs.GetTestFS()
 	failed := uint32(0)
 	tf := func(t *testing.T, nh *NodeHost) {
+		t.Helper()
 		nhi := nh.GetNodeHostInfo(DefaultNodeHostInfoOption)
 		for _, ci := range nhi.ShardInfoList {
 			if ci.ShardID == 1 {
@@ -2807,7 +2832,8 @@ func TestRegularStateMachineDoesNotAllowConucrrentUpdate(t *testing.T) {
 				if err != nil {
 					continue
 				}
-				v := binary.LittleEndian.Uint32(result.([]byte))
+				rb, _ := result.([]byte)
+				v := binary.LittleEndian.Uint32(rb)
 				if v == 1 {
 					atomic.StoreUint32(&failed, 1)
 					return
@@ -2824,6 +2850,7 @@ func TestRegularStateMachineDoesNotAllowConucrrentUpdate(t *testing.T) {
 func TestRegularStateMachineDoesNotAllowConcurrentSaveSnapshot(t *testing.T) {
 	fs := vfs.GetTestFS()
 	tf := func(t *testing.T, nh *NodeHost) {
+		t.Helper()
 		result := make(map[uint64]struct{})
 		session := nh.GetNoOPSession(1)
 		pto := pto(nh)
@@ -2868,7 +2895,7 @@ func TestLogDBRateLimit(t *testing.T) {
 				ctx, cancel := context.WithTimeout(t.Context(), pto)
 				_, err := nh.SyncPropose(ctx, session, make([]byte, 512))
 				cancel()
-				if err == ErrSystemBusy {
+				if errors.Is(err, ErrSystemBusy) {
 					rateLimited = true
 					break
 				}
@@ -2920,7 +2947,7 @@ func TestProposalsCanBeMadeWhenRateLimited(t *testing.T) {
 				ctx, cancel := context.WithTimeout(t.Context(), pto)
 				_, err := nh.SyncPropose(ctx, session, make([]byte, 16))
 				cancel()
-				if err == ErrTimeout {
+				if errors.Is(err, ErrTimeout) {
 					continue
 				}
 				require.NoError(t, err, "failed to make proposal %v", err)
@@ -2969,7 +2996,7 @@ func TestRateLimitCanBeTriggered(t *testing.T) {
 						ctx, cancel := context.WithTimeout(t.Context(), pto)
 						_, err := nh.SyncPropose(ctx, session, make([]byte, 1024))
 						cancel()
-						if err == ErrSystemBusy {
+						if errors.Is(err, ErrSystemBusy) {
 							atomic.StoreUint32(&limited, 1)
 							return
 						}
@@ -2990,6 +3017,7 @@ func TestRateLimitCanUseFollowerFeedback(t *testing.T) {
 	fs := vfs.GetTestFS()
 	tf := func(t *testing.T, nh1 *NodeHost, nh2 *NodeHost,
 		n1 *tests.NoOP, n2 *tests.NoOP) {
+		t.Helper()
 		session := nh1.GetNoOPSession(1)
 		limited := false
 		for range 2000 {
@@ -2997,9 +3025,9 @@ func TestRateLimitCanUseFollowerFeedback(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			_, err := nh1.SyncPropose(ctx, session, make([]byte, 1024))
 			cancel()
-			if err == ErrShardNotReady {
+			if errors.Is(err, ErrShardNotReady) {
 				time.Sleep(20 * time.Millisecond)
-			} else if err == ErrSystemBusy {
+			} else if errors.Is(err, ErrSystemBusy) {
 				limited = true
 				break
 			}
@@ -3034,7 +3062,7 @@ func TestUpdateResultIsReturnedToCaller(t *testing.T) {
 			require.NoError(t, err)
 			result, err := nh.SyncPropose(ctx, session, cmd)
 			cancel()
-			assert.NoError(t, err, "failed to make proposal %v", err)
+			require.NoError(t, err, "failed to make proposal %v", err)
 			assert.Equal(t, uint64(1518), result.Value, "unexpected result value")
 			assert.Equal(t, cmd, result.Data, "unexpected result data")
 		},
@@ -3054,14 +3082,14 @@ func TestRaftLogQuery(t *testing.T) {
 			assert.Equal(t, ErrInvalidRange, err)
 
 			rs, err := nh.QueryRaftLog(1, 1, 11, math.MaxUint64)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			ticker := time.NewTicker(2 * time.Second)
 			defer ticker.Stop()
 			select {
 			case v := <-rs.CompletedC:
 				assert.True(t, v.Completed())
 				entries, logRange := v.RaftLogs()
-				assert.Equal(t, 10, len(entries))
+				assert.Len(t, entries, 10)
 				assert.Equal(t, LogRange{FirstIndex: 1, LastIndex: 13}, logRange)
 			case <-ticker.C:
 				require.Fail(t, "no results")
@@ -3069,12 +3097,12 @@ func TestRaftLogQuery(t *testing.T) {
 			rs.Release()
 
 			rs, err = nh.QueryRaftLog(1, 1, 1000, math.MaxUint64)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			select {
 			case v := <-rs.CompletedC:
 				assert.True(t, v.Completed())
 				entries, logRange := v.RaftLogs()
-				assert.Equal(t, 12, len(entries))
+				assert.Len(t, entries, 12)
 				assert.Equal(t, LogRange{FirstIndex: 1, LastIndex: 13}, logRange)
 			case <-ticker.C:
 				require.Fail(t, "no results")
@@ -3082,12 +3110,12 @@ func TestRaftLogQuery(t *testing.T) {
 			rs.Release()
 
 			rs, err = nh.QueryRaftLog(1, 13, 1000, math.MaxUint64)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			select {
 			case v := <-rs.CompletedC:
 				assert.True(t, v.RequestOutOfRange())
 				entries, logRange := v.RaftLogs()
-				assert.Equal(t, 0, len(entries))
+				assert.Empty(t, entries)
 				assert.Equal(t, LogRange{FirstIndex: 1, LastIndex: 13}, logRange)
 			case <-ticker.C:
 				require.Fail(t, "no results")
@@ -3101,12 +3129,12 @@ func TestRaftLogQuery(t *testing.T) {
 				OverrideCompactionOverhead: true,
 			}
 			_, err = nh.SyncRequestSnapshot(ctx, 1, opts)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			done := false
 			for range 1000 {
 				func() {
 					rs, err := nh.QueryRaftLog(1, 1, 11, math.MaxUint64)
-					assert.NoError(t, err)
+					require.NoError(t, err)
 					ticker := time.NewTicker(2 * time.Second)
 					defer ticker.Stop()
 					select {
@@ -3117,7 +3145,7 @@ func TestRaftLogQuery(t *testing.T) {
 						}
 						assert.True(t, v.RequestOutOfRange())
 						entries, logRange := v.RaftLogs()
-						assert.Equal(t, 0, len(entries))
+						assert.Empty(t, entries)
 						assert.Equal(t, LogRange{FirstIndex: 11, LastIndex: 13}, logRange)
 						done = true
 						return
@@ -3139,6 +3167,7 @@ func TestRaftLogQuery(t *testing.T) {
 func TestIsNonVotingIsReturnedWhenNodeIsNonVoting(t *testing.T) {
 	fs := vfs.GetTestFS()
 	tf := func(t *testing.T, nh1 *NodeHost, nh2 *NodeHost) {
+		t.Helper()
 		rc := config.Config{
 			ShardID:                 1,
 			ReplicaID:               1,
@@ -3300,7 +3329,7 @@ func TestCanOverrideSnapshotOverhead(t *testing.T) {
 				_, err := nh.SyncPropose(ctx, session, cmd)
 				cancel()
 				if err != nil {
-					if err == ErrTimeout {
+					if errors.Is(err, ErrTimeout) {
 						time.Sleep(500 * time.Millisecond)
 						continue
 					}
@@ -3503,7 +3532,7 @@ func TestRestartingAnNodeWithRemovedDataWillBeRejected(t *testing.T) {
 			for {
 				err := nh.RemoveData(1, 1)
 				if err != nil {
-					if err == ErrShardNotStopped {
+					if errors.Is(err, ErrShardNotStopped) {
 						time.Sleep(100 * time.Millisecond)
 						continue
 					} else {
@@ -3571,7 +3600,7 @@ func TestRemoveNodeDataRemovesAllNodeData(t *testing.T) {
 			removed := false
 			for range 1000 {
 				err := nh.RemoveData(1, 1)
-				if err == ErrShardNotStopped {
+				if errors.Is(err, ErrShardNotStopped) {
 					time.Sleep(100 * time.Millisecond)
 					continue
 				}
@@ -3735,7 +3764,7 @@ func TestOnDiskStateMachineCanExportSnapshot(t *testing.T) {
 			pto := lpto(nh)
 			for {
 				sr, err := nh.RequestSnapshot(1, opt, pto)
-				if err == ErrRejected {
+				if errors.Is(err, ErrRejected) {
 					continue
 				}
 				require.NoError(t, err, "failed to request snapshot %v", err)
@@ -3789,6 +3818,7 @@ func TestOnDiskStateMachineCanExportSnapshot(t *testing.T) {
 
 func testImportedSnapshotIsAlwaysRestored(t *testing.T,
 	newDir bool, ct config.CompressionType, fs vfs.IFS) {
+	t.Helper()
 	tf := func(testDir string) {
 		rc := config.Config{
 			ShardID:                 1,
@@ -3859,7 +3889,7 @@ func testImportedSnapshotIsAlwaysRestored(t *testing.T,
 		rv, err := nh.SyncRead(ctx, 1, nil)
 		cancel()
 		require.NoError(t, err, "failed to read applied value %v", err)
-		applied := rv.(uint64)
+		applied, _ := rv.(uint64)
 		require.Greater(t, applied, index, "invalid applied value %d", applied)
 
 		ctx, cancel = context.WithTimeout(t.Context(), pto)
@@ -3896,7 +3926,8 @@ func testImportedSnapshotIsAlwaysRestored(t *testing.T,
 			rv, err = rnh.SyncRead(ctx, 1, nil)
 			cancel()
 			require.NoError(t, err, "failed to read applied value %v", err)
-			require.Equal(t, index, rv.(uint64), "invalid returned value %d", rv)
+			applied, _ := rv.(uint64)
+			require.Equal(t, index, applied, "invalid returned value %d", rv)
 			makeProposals(rnh)
 		}()
 
@@ -4082,8 +4113,9 @@ type dataCorruptionSink struct {
 
 func (s *dataCorruptionSink) Receive(chunk pb.Chunk) (bool, bool) {
 	if s.enabled && len(chunk.Data) > 0 {
+		//nolint:gosec // non-cryptographic use: random test-data corruption index
 		idx := mathrand.Uint64() % uint64(len(chunk.Data))
-		chunk.Data[idx] = chunk.Data[idx] + 1
+		chunk.Data[idx]++
 	}
 	s.receiver.Add(chunk)
 	return true, false
@@ -4116,6 +4148,7 @@ func getTestSSMeta() rsm.SSMeta {
 
 func testCorruptedChunkWriterOutputCanBeHandledByChunk(t *testing.T,
 	enabled bool, exp uint64, fs vfs.IFS) {
+	t.Helper()
 	c := &chunks{dir: t.TempDir()}
 	dir := c.getSnapshotDirFunc(0, 0)
 	require.NoError(t, fs.MkdirAll(dir, 0755))
@@ -4234,6 +4267,7 @@ func TestNodeHostChecksLogDBType(t *testing.T) {
 var spawnChild = flag.Bool("spawn-child", false, "spawned child")
 
 func spawn(execName string, testDir string) ([]byte, error) {
+	//nolint:gosec // test-only: respawns the test binary itself with fixed args
 	cmd := exec.Command(execName, "-spawn-child",
 		"-test.v", "-test.run=TestNodeHostFileLock$")
 	cmd.Env = append(os.Environ(), "DRAGONBOAT_TEST_FILE_LOCK_DIR="+testDir)
@@ -4315,14 +4349,8 @@ func (t *testLogDBFactory2) Name() string {
 
 func TestNodeHostReturnsErrLogDBBrokenChangeWhenLogDBTypeChanges(t *testing.T) {
 	fs := vfs.GetTestFS()
-	bff := func(config config.NodeHostConfig, cb config.LogDBCallback,
-		dirs []string, lldirs []string) (raftio.ILogDB, error) {
-		return logdb.NewDefaultBatchedLogDB(config, cb, dirs, lldirs)
-	}
-	nff := func(config config.NodeHostConfig, cb config.LogDBCallback,
-		dirs []string, lldirs []string) (raftio.ILogDB, error) {
-		return logdb.NewDefaultLogDB(config, cb, dirs, lldirs)
-	}
+	bff := logdb.NewDefaultBatchedLogDB
+	nff := logdb.NewDefaultLogDB
 	to := &testOption{
 		at: func(nh *NodeHost) {
 			nhc := getTestNodeHostConfig(fs, nh.NodeHostConfig().NodeHostDir)
@@ -4342,14 +4370,8 @@ func TestNodeHostReturnsErrLogDBBrokenChangeWhenLogDBTypeChanges(t *testing.T) {
 
 func TestNodeHostByDefaultUsePlainEntryLogDB(t *testing.T) {
 	fs := vfs.GetTestFS()
-	bff := func(config config.NodeHostConfig, cb config.LogDBCallback,
-		dirs []string, lldirs []string) (raftio.ILogDB, error) {
-		return logdb.NewDefaultBatchedLogDB(config, cb, dirs, lldirs)
-	}
-	nff := func(config config.NodeHostConfig, cb config.LogDBCallback,
-		dirs []string, lldirs []string) (raftio.ILogDB, error) {
-		return logdb.NewDefaultLogDB(config, cb, dirs, lldirs)
-	}
+	bff := logdb.NewDefaultBatchedLogDB
+	nff := logdb.NewDefaultLogDB
 	to := &testOption{
 		updateNodeHostConfig: func(c *config.NodeHostConfig) *config.NodeHostConfig {
 			c.Expert.LogDBFactory = &testLogDBFactory2{f: nff}
@@ -4369,14 +4391,8 @@ func TestNodeHostByDefaultUsePlainEntryLogDB(t *testing.T) {
 
 func TestNodeHostByDefaultChecksWhetherToUseBatchedLogDB(t *testing.T) {
 	fs := vfs.GetTestFS()
-	bff := func(config config.NodeHostConfig, cb config.LogDBCallback,
-		dirs []string, lldirs []string) (raftio.ILogDB, error) {
-		return logdb.NewDefaultBatchedLogDB(config, cb, dirs, lldirs)
-	}
-	nff := func(config config.NodeHostConfig, cb config.LogDBCallback,
-		dirs []string, lldirs []string) (raftio.ILogDB, error) {
-		return logdb.NewDefaultLogDB(config, cb, dirs, lldirs)
-	}
+	bff := logdb.NewDefaultBatchedLogDB
+	nff := logdb.NewDefaultLogDB
 	to := &testOption{
 		updateNodeHostConfig: func(c *config.NodeHostConfig) *config.NodeHostConfig {
 			c.Expert.LogDBFactory = &testLogDBFactory2{f: bff}
@@ -4696,6 +4712,7 @@ func makeProposals(nh *NodeHost) {
 
 func testWitnessIO(t *testing.T,
 	witnessTestFunc func(*NodeHost, *NodeHost, *tests.SimDiskSM), fs vfs.IFS) {
+	t.Helper()
 	tf := func(testDir string) {
 		rc := config.Config{
 			ShardID:      1,
@@ -4879,6 +4896,7 @@ func TestTimeoutCanBeReturned(t *testing.T) {
 }
 
 func testIOErrorIsHandled(t *testing.T, op vfs.Op) {
+	t.Helper()
 	inj := vfs.OnIndex(-1, op)
 	fs := vfs.Wrap(vfs.GetTestFS(), inj)
 	to := &testOption{
@@ -4898,7 +4916,7 @@ func testIOErrorIsHandled(t *testing.T, op vfs.Op) {
 				"proposal unexpectedly completed, %v", err)
 			select {
 			case e := <-nh.engine.ec:
-				require.True(t, strings.Contains(e.Error(), vfs.ErrInjected.Error()),
+				require.Contains(t, e.Error(), vfs.ErrInjected.Error(),
 					"failed to return the expected error, %v", e)
 			default:
 				require.Fail(t, "failed to trigger error")
@@ -5086,7 +5104,7 @@ func TestGetTimeoutFromContext(t *testing.T) {
 	defer cancel()
 	d, err := getTimeoutFromContext(ctx)
 	require.NoError(t, err, "failed to get timeout, %v", err)
-	require.True(t, d >= 55*time.Second, "unexpected result")
+	require.GreaterOrEqual(t, d, 55*time.Second, "unexpected result")
 }
 
 func TestHandleSnapshotStatus(t *testing.T) {
@@ -5239,6 +5257,7 @@ func (s *stressRSM) Update(sm.Entry) (sm.Result, error) {
 }
 
 func (s *stressRSM) Lookup(any) (any, error) {
+	//nolint:nilnil // deliberate no-op stub: lookup result is never inspected
 	return nil, nil
 }
 
@@ -5309,7 +5328,7 @@ func TestSlowTestStressedSnapshotWorker(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 			_, err := nh1.SyncPropose(ctx, cs, make([]byte, 1))
 			cancel()
-			if err == ErrTimeout || err == ErrShardNotReady {
+			if errors.Is(err, ErrTimeout) || errors.Is(err, ErrShardNotReady) {
 				time.Sleep(100 * time.Millisecond)
 				continue
 			}
@@ -5326,7 +5345,7 @@ func TestSlowTestStressedSnapshotWorker(t *testing.T) {
 			err := nh1.SyncRequestAddReplica(ctx, i, 2, nodeHostTestAddr2, 0)
 			cancel()
 			if err != nil {
-				if err == ErrTimeout || err == ErrShardNotReady {
+				if errors.Is(err, ErrTimeout) || errors.Is(err, ErrShardNotReady) {
 					time.Sleep(100 * time.Millisecond)
 					continue
 				}
@@ -5365,7 +5384,7 @@ func TestSlowTestStressedSnapshotWorker(t *testing.T) {
 			_, err := nh2.SyncPropose(ctx, cs, make([]byte, 1))
 			cancel()
 			if err != nil {
-				if err == ErrTimeout || err == ErrShardNotReady {
+				if errors.Is(err, ErrTimeout) || errors.Is(err, ErrShardNotReady) {
 					total--
 					require.NotZero(t, total, "failed to make proposal on shard %d", i)
 					time.Sleep(100 * time.Millisecond)

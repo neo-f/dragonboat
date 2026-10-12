@@ -72,6 +72,7 @@ func getTestSnapshotter(testDir string, ldb raftio.ILogDB, fs vfs.IFS) *snapshot
 func runSnapshotterTest(t *testing.T,
 	fn func(t *testing.T, logdb raftio.ILogDB, snapshotter *snapshotter),
 	fs vfs.IFS) {
+	t.Helper()
 	defer leaktest.AfterTest(t)()
 	testDir := t.TempDir()
 	dir := "db-dir"
@@ -87,6 +88,7 @@ func runSnapshotterTest(t *testing.T,
 func TestFinalizeSnapshotReturnExpectedErrorWhenOutOfDate(t *testing.T) {
 	fs := vfs.GetTestFS()
 	fn := func(t *testing.T, ldb raftio.ILogDB, s *snapshotter) {
+		t.Helper()
 		ss := pb.Snapshot{
 			FileSize: 1234,
 			Filepath: "f2",
@@ -106,6 +108,7 @@ func TestFinalizeSnapshotReturnExpectedErrorWhenOutOfDate(t *testing.T) {
 func TestSnapshotCanBeFinalized(t *testing.T) {
 	fs := vfs.GetTestFS()
 	fn := func(t *testing.T, ldb raftio.ILogDB, s *snapshotter) {
+		t.Helper()
 		ss := pb.Snapshot{
 			FileSize: 1234,
 			Filepath: "f2",
@@ -149,6 +152,7 @@ func TestSnapshotCanBeFinalized(t *testing.T) {
 
 func TestSnapshotCanBeSavedToLogDB(t *testing.T) {
 	fn := func(t *testing.T, ldb raftio.ILogDB, s *snapshotter) {
+		t.Helper()
 		s1 := pb.Snapshot{
 			FileSize: 1234,
 			Filepath: "f2",
@@ -167,6 +171,7 @@ func TestSnapshotCanBeSavedToLogDB(t *testing.T) {
 func TestZombieSnapshotDirsCanBeRemoved(t *testing.T) {
 	fs := vfs.GetTestFS()
 	fn := func(t *testing.T, ldb raftio.ILogDB, s *snapshotter) {
+		t.Helper()
 		env1 := s.getEnv(100)
 		env2 := s.getEnv(200)
 		fd1 := env1.GetFinalDir()
@@ -187,6 +192,7 @@ func TestZombieSnapshotDirsCanBeRemoved(t *testing.T) {
 func TestSnapshotsNotInLogDBAreRemoved(t *testing.T) {
 	fs := vfs.GetTestFS()
 	fn := func(t *testing.T, ldb raftio.ILogDB, s *snapshotter) {
+		t.Helper()
 		env1 := s.getEnv(100)
 		env2 := s.getEnv(200)
 		fd1 := env1.GetFinalDir()
@@ -205,6 +211,7 @@ func TestSnapshotsNotInLogDBAreRemoved(t *testing.T) {
 func TestOnlyMostRecentSnapshotIsKept(t *testing.T) {
 	fs := vfs.GetTestFS()
 	fn := func(t *testing.T, ldb raftio.ILogDB, s *snapshotter) {
+		t.Helper()
 		env1 := s.getEnv(100)
 		env2 := s.getEnv(200)
 		env3 := s.getEnv(300)
@@ -235,6 +242,7 @@ func TestOnlyMostRecentSnapshotIsKept(t *testing.T) {
 func TestFirstSnapshotBecomeOrphanedIsHandled(t *testing.T) {
 	fs := vfs.GetTestFS()
 	fn := func(t *testing.T, ldb raftio.ILogDB, s *snapshotter) {
+		t.Helper()
 		s1 := pb.Snapshot{
 			FileSize: 1234,
 			Filepath: "f2",
@@ -256,6 +264,7 @@ func TestFirstSnapshotBecomeOrphanedIsHandled(t *testing.T) {
 func TestOrphanedSnapshotRecordIsRemoved(t *testing.T) {
 	fs := vfs.GetTestFS()
 	fn := func(t *testing.T, ldb raftio.ILogDB, s *snapshotter) {
+		t.Helper()
 		s1 := pb.Snapshot{
 			FileSize: 1234,
 			Filepath: "f2",
@@ -299,6 +308,7 @@ func TestOrphanedSnapshotRecordIsRemoved(t *testing.T) {
 func TestOrphanedSnapshotsCanBeProcessed(t *testing.T) {
 	fs := vfs.GetTestFS()
 	fn := func(t *testing.T, ldb raftio.ILogDB, s *snapshotter) {
+		t.Helper()
 		s1 := pb.Snapshot{
 			FileSize: 1234,
 			Filepath: "f2",
@@ -356,6 +366,7 @@ func TestOrphanedSnapshotsCanBeProcessed(t *testing.T) {
 func TestSnapshotterCompact(t *testing.T) {
 	fs := vfs.GetTestFS()
 	fn := func(t *testing.T, ldb raftio.ILogDB, snapshotter *snapshotter) {
+		t.Helper()
 		for i := uint64(1); i <= uint64(3); i++ {
 			fn := fmt.Sprintf("f%d.data", i)
 			s := pb.Snapshot{
@@ -393,6 +404,7 @@ func TestSnapshotterCompact(t *testing.T) {
 func TestShrinkSnapshots(t *testing.T) {
 	fs := vfs.GetTestFS()
 	fn := func(t *testing.T, ldb raftio.ILogDB, snapshotter *snapshotter) {
+		t.Helper()
 		for i := uint64(1); i <= 3; i++ {
 			index := i * 10
 			env := snapshotter.getEnv(index)
@@ -437,6 +449,7 @@ func TestShrinkSnapshots(t *testing.T) {
 
 func TestSnapshotDirNameMatchWorks(t *testing.T) {
 	fn := func(t *testing.T, ldb raftio.ILogDB, s *snapshotter) {
+		t.Helper()
 		tests := []struct {
 			dirName string
 			valid   bool
@@ -450,7 +463,7 @@ func TestSnapshotDirNameMatchWorks(t *testing.T) {
 		for idx, tt := range tests {
 			v := s.dirMatch(tt.dirName)
 			require.Equal(t, tt.valid, v,
-				fmt.Sprintf("dir name %s (%d) failed to match", tt.dirName, idx))
+				"dir name %s (%d) failed to match", tt.dirName, idx)
 		}
 	}
 	fs := vfs.GetTestFS()
@@ -459,6 +472,7 @@ func TestSnapshotDirNameMatchWorks(t *testing.T) {
 
 func TestZombieSnapshotDirNameMatchWorks(t *testing.T) {
 	fn := func(t *testing.T, ldb raftio.ILogDB, s *snapshotter) {
+		t.Helper()
 		tests := []struct {
 			dirName string
 			valid   bool
@@ -483,7 +497,7 @@ func TestZombieSnapshotDirNameMatchWorks(t *testing.T) {
 		for idx, tt := range tests {
 			v := s.isZombie(tt.dirName)
 			require.Equal(t, tt.valid, v,
-				fmt.Sprintf("dir name %s (%d) failed to match", tt.dirName, idx))
+				"dir name %s (%d) failed to match", tt.dirName, idx)
 		}
 	}
 	fs := vfs.GetTestFS()

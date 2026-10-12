@@ -45,7 +45,7 @@ func TestResponseCanBeAdded(t *testing.T) {
 			s.addResponse(tt.seriesNumList[idx],
 				sm.Result{Value: tt.valueList[idx]})
 		}
-		require.Equal(t, tt.size, len(s.History),
+		require.Len(t, s.History, tt.size,
 			"i %d, size mismatch", i)
 		v, ok := s.getResponse(tt.testSeriesNum)
 		require.Equal(t, tt.expectedValue, v.Value,
@@ -78,7 +78,7 @@ func TestCachedResponseDataCanBeCleared(t *testing.T) {
 				sm.Result{Value: tt.valueList[idx]})
 		}
 		s.clearTo(tt.clearTo)
-		require.Equal(t, tt.sizeAfterClear, len(s.History),
+		require.Len(t, s.History, tt.sizeAfterClear,
 			"i %d, size after clear mismatch", i)
 		_, ok := s.getResponse(tt.testSeriesNum)
 		require.Equal(t, tt.expectedResult, ok,

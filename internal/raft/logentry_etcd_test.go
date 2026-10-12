@@ -248,7 +248,7 @@ func TestLogMaybeAppend(t *testing.T) {
 			lastterm, lastindex, lastindex + 2, []pb.Entry{{Index: lastindex + 1, Term: 4}, {Index: lastindex + 2, Term: 4}},
 			lastindex + 2, true, lastindex + 2, false,
 		},
-		// match with the the entry in the middle
+		// match with the entry in the middle
 		{
 			lastterm - 1, lastindex - 1, lastindex, []pb.Entry{{Index: lastindex, Term: 4}},
 			lastindex, true, lastindex, false,
@@ -463,7 +463,7 @@ func TestCompaction(t *testing.T) {
 			}
 			raftLog.commitUpdate(pb.UpdateCommit{Processed: raftLog.committed})
 
-			for j := 0; j < len(tt.compact); j++ {
+			for j := range len(tt.compact) {
 				err := storage.Compact(tt.compact[j])
 				if err != nil {
 					if tt.wallow {
@@ -578,7 +578,7 @@ func TestIsOutOfBounds(t *testing.T) {
 			if tt.wpanic {
 				t.Errorf("%d: panic = %v, want %v", i, false, true)
 			}
-			if tt.wErrCompacted && err != ErrCompacted {
+			if tt.wErrCompacted && !errors.Is(err, ErrCompacted) {
 				t.Errorf("%d: err = %v, want %v", i, err, ErrCompacted)
 			}
 			if !tt.wErrCompacted && err != nil {
@@ -711,7 +711,7 @@ func TestSlice(t *testing.T) {
 				}
 			}()
 			g, err := l.getEntries(tt.from, tt.to, tt.limit)
-			if tt.from <= offset && err != ErrCompacted {
+			if tt.from <= offset && !errors.Is(err, ErrCompacted) {
 				t.Fatalf("#%d: err = %v, want %v", j, err, ErrCompacted)
 			}
 			if tt.from > offset && err != nil {
@@ -841,8 +841,8 @@ func TestUnstableEnts(t *testing.T) {
 				StableLogTerm: ents[l-1].Term,
 			}
 			raftLog.commitUpdate(cu)
-			//raftLog.savedLogTo(ents[l-1].Index, ents[l-i].Term)
-			//raftLog.appliedLogTo(ents[l-1].Index)
+			// raftLog.savedLogTo(ents[l-1].Index, ents[l-i].Term)
+			// raftLog.appliedLogTo(ents[l-1].Index)
 		}
 		if !reflect.DeepEqual(ents, tt.wents) {
 			t.Errorf("#%d: unstableEnts = %+v, want %+v", i, ents, tt.wents)

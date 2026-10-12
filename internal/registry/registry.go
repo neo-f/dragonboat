@@ -69,7 +69,8 @@ func (n *Registry) Add(shardID uint64, replicaID uint64, target string) {
 	key := raftio.GetNodeInfo(shardID, replicaID)
 	v, ok := n.addr.LoadOrStore(key, target)
 	if ok {
-		if v.(string) != target {
+		existing, mok := v.(string)
+		if !mok || existing != target {
 			plog.Panicf("inconsistent target for %s, %s:%s",
 				logutil.DescribeNode(shardID, replicaID), v, target)
 		}
@@ -92,7 +93,10 @@ func (n *Registry) Remove(shardID uint64, replicaID uint64) {
 func (n *Registry) RemoveShard(shardID uint64) {
 	var toRemove []raftio.NodeInfo
 	n.addr.Range(func(k, v any) bool {
-		ni := k.(raftio.NodeInfo)
+		ni, ok := k.(raftio.NodeInfo)
+		if !ok {
+			return true
+		}
 		if ni.ShardID == shardID {
 			toRemove = append(toRemove, ni)
 		}
@@ -106,9 +110,13 @@ func (n *Registry) RemoveShard(shardID uint64) {
 // Resolve looks up the address of the specified node.
 func (n *Registry) Resolve(shardID uint64, replicaID uint64) (string, string, error) {
 	key := raftio.GetNodeInfo(shardID, replicaID)
-	addr, ok := n.addr.Load(key)
+	v, ok := n.addr.Load(key)
 	if !ok {
 		return "", "", ErrUnknownTarget
 	}
-	return addr.(string), n.getConnectionKey(addr.(string), shardID), nil
+	addr, ok := v.(string)
+	if !ok {
+		return "", "", ErrUnknownTarget
+	}
+	return addr, n.getConnectionKey(addr, shardID), nil
 }

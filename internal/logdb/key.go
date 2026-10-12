@@ -217,5 +217,6 @@ func newLogDBKeyPool() *keyPool {
 }
 
 func (p *keyPool) get() *Key {
-	return p.pool.Get().(*Key)
+	k, _ := p.pool.Get().(*Key)
+	return k
 }

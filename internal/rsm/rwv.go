@@ -137,7 +137,7 @@ func (bw *BlockWriter) Write(bs []byte) (int, error) {
 			if err := bw.processNewBlock(bw.block, bw.h.Sum(nil)); err != nil {
 				return int(totalN), err
 			}
-			bw.nextStop = bw.nextStop + bw.blockSize
+			bw.nextStop += bw.blockSize
 			bw.h.Reset()
 			bw.block = bw.block[:0]
 		}
@@ -164,8 +164,8 @@ func (bw *BlockWriter) Close() error {
 	}
 	totalbs := make([]byte, 8, 8+len(writerMagicNumber))
 	binary.LittleEndian.PutUint64(totalbs, bw.total)
-	tailBlock := append(totalbs, writerMagicNumber...)
-	return bw.processNewBlock(tailBlock, nil)
+	totalbs = append(totalbs, writerMagicNumber...)
+	return bw.processNewBlock(totalbs, nil)
 }
 
 // GetPayloadChecksum returns the checksum for the entire payload.
@@ -550,7 +550,7 @@ func getV2CRCOffsetListFromFileSize(sz uint64) ([]uint64, error) {
 		if sz >= blockSize+checksumSize {
 			result = append(result, offset+blockSize)
 			offset = offset + blockSize + checksumSize
-			sz = sz - (blockSize + checksumSize)
+			sz -= (blockSize + checksumSize)
 		} else {
 			result = append(result, offset+sz-checksumSize)
 			break

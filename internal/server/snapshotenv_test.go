@@ -23,8 +23,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func reportLeakedFD(fs vfs.IFS, t *testing.T) {
-	vfs.ReportLeakedFD(fs, t)
+const testHomeDir = "/home/test"
+
+func reportLeakedFD(t *testing.T, fs vfs.IFS) {
+	t.Helper()
+	vfs.ReportLeakedFD(t, fs)
 }
 
 func TestGetSnapshotDirName(t *testing.T) {
@@ -40,12 +43,12 @@ func TestMustBeChild(t *testing.T) {
 		child  string
 		ok     bool
 	}{
-		{"/home/test", "/home", false},
-		{"/home/test", "/home/test", false},
-		{"/home/test", "/home/data", false},
-		{"/home/test", "/home/test1", false},
-		{"/home/test", "/home/test/data", true},
-		{"/home/test", "", false},
+		{testHomeDir, "/home", false},
+		{testHomeDir, testHomeDir, false},
+		{testHomeDir, "/home/data", false},
+		{testHomeDir, "/home/test1", false},
+		{testHomeDir, "/home/test/data", true},
+		{testHomeDir, "", false},
 	}
 	for _, tt := range tests {
 		parent := tt.parent
@@ -75,7 +78,7 @@ func TestTempSuffix(t *testing.T) {
 	env = NewSSEnv(f, 1, 1, 1, 2, ReceivingMode, fs)
 	dir = env.GetTempDir()
 	assert.Contains(t, dir, ".receiving")
-	reportLeakedFD(fs, t)
+	reportLeakedFD(t, fs)
 }
 
 func TestFinalSnapshotDirDoesNotContainTempSuffix(t *testing.T) {
@@ -103,11 +106,12 @@ func TestRootDirIsTheParentOfTempFinalDirs(t *testing.T) {
 	assert.NotPanics(t, func() {
 		mustBeChild(rootDir, finalDir)
 	})
-	reportLeakedFD(fs, t)
+	reportLeakedFD(t, fs)
 }
 
 func runEnvTest(t *testing.T, f func(t *testing.T, env SSEnv),
 	fs vfs.IFS) {
+	t.Helper()
 	rd := "server-pkg-test-data-safe-to-delete"
 	defer func() {
 		err := fs.RemoveAll(rd)
@@ -123,11 +127,12 @@ func runEnvTest(t *testing.T, f func(t *testing.T, env SSEnv),
 		require.NoError(t, err)
 		f(t, env)
 	}()
-	reportLeakedFD(fs, t)
+	reportLeakedFD(t, fs)
 }
 
 func TestRenameTempDirToFinalDir(t *testing.T) {
 	tf := func(t *testing.T, env SSEnv) {
+		t.Helper()
 		err := env.renameToFinalDir()
 		require.NoError(t, err)
 	}
@@ -137,6 +142,7 @@ func TestRenameTempDirToFinalDir(t *testing.T) {
 
 func TestRenameTempDirToFinalDirCanComplete(t *testing.T) {
 	tf := func(t *testing.T, env SSEnv) {
+		t.Helper()
 		assert.False(t, env.finalDirExists())
 		err := env.renameToFinalDir()
 		require.NoError(t, err)
@@ -149,6 +155,7 @@ func TestRenameTempDirToFinalDirCanComplete(t *testing.T) {
 
 func TestFlagFileExists(t *testing.T) {
 	tf := func(t *testing.T, env SSEnv) {
+		t.Helper()
 		assert.False(t, env.finalDirExists())
 		msg := &pb.Message{}
 		err := env.createFlagFile(msg)
@@ -164,6 +171,7 @@ func TestFlagFileExists(t *testing.T) {
 
 func TestFinalizeSnapshotCanComplete(t *testing.T) {
 	tf := func(t *testing.T, env SSEnv) {
+		t.Helper()
 		m := &pb.Message{}
 		err := env.FinalizeSnapshot(m)
 		require.NoError(t, err)
@@ -176,6 +184,7 @@ func TestFinalizeSnapshotCanComplete(t *testing.T) {
 
 func TestFinalizeSnapshotReturnOutOfDateWhenFinalDirExist(t *testing.T) {
 	tf := func(t *testing.T, env SSEnv) {
+		t.Helper()
 		finalDir := env.GetFinalDir()
 		err := env.fs.MkdirAll(finalDir, 0755)
 		require.NoError(t, err)

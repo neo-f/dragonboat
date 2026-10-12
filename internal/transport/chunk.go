@@ -203,11 +203,9 @@ func (c *Chunk) record(chunk pb.Chunk) *tracked {
 		if td != nil {
 			plog.Warningf("removing unclaimed chunks %s", key)
 			c.removeTempDir(td.first)
-		} else {
-			if c.full() {
-				plog.Errorf("max slot count reached, dropped a chunk %s", key)
-				return nil
-			}
+		} else if c.full() {
+			plog.Errorf("max slot count reached, dropped a chunk %s", key)
+			return nil
 		}
 		validator := rsm.NewSnapshotValidator()
 		if c.validate && !chunk.HasFileInfo {
@@ -361,7 +359,7 @@ func (c *Chunk) finalize(chunk pb.Chunk, td *tracked) error {
 	}
 	ss := &msg.Requests[0].Snapshot
 	err := env.FinalizeSnapshot(ss)
-	if err == server.ErrSnapshotOutOfDate {
+	if errors.Is(err, server.ErrSnapshotOutOfDate) {
 		return ErrSnapshotOutOfDate
 	}
 	return err

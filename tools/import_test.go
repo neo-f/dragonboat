@@ -58,11 +58,11 @@ func TestGetSnapshotFilenames(t *testing.T) {
 
 	fns, err := getSnapshotFilenames(testDataDir, fs)
 	require.NoError(t, err, "failed to get filenames")
-	require.Equal(t, 16, len(fns), "failed to return all filenames")
+	require.Len(t, fns, 16, "failed to return all filenames")
 
 	fps, err := getSnapshotFiles(testDataDir, fs)
 	require.NoError(t, err, "failed to get filenames")
-	require.Equal(t, 16, len(fps), "failed to return all filenames")
+	require.Len(t, fps, 16, "failed to return all filenames")
 
 	_, err = getSnapshotFilepath(testDataDir, fs)
 	require.Equal(t, ErrIncompleteSnapshot, err,
@@ -74,7 +74,7 @@ func TestSnapshotFilepath(t *testing.T) {
 	testDataDir := t.TempDir()
 	require.NoError(t, fs.MkdirAll(testDataDir, 0755))
 
-	fn := fmt.Sprintf("testdata.%s", server.SnapshotFileSuffix)
+	fn := "testdata." + server.SnapshotFileSuffix
 	dst := fs.PathJoin(testDataDir, fn)
 	f, err := fs.Create(dst, vfs.WriteCategoryUnspecified)
 	require.NoError(t, err, "failed to create file")
@@ -268,11 +268,11 @@ func TestGetProcessedSnapshotRecord(t *testing.T) {
 	require.True(t, ok, "node 5 not in new ss")
 	require.Equal(t, "a5", v, "node 5 not in new ss")
 
-	require.Equal(t, 2, len(newss.Membership.Addresses),
+	require.Len(t, newss.Membership.Addresses, 2,
 		"unexpected member count")
-	require.Equal(t, 0, len(newss.Membership.NonVotings),
+	require.Empty(t, newss.Membership.NonVotings,
 		"NonVotings not empty")
-	require.Equal(t, 3, len(newss.Membership.Removed),
+	require.Len(t, newss.Membership.Removed, 3,
 		"unexpected removed count")
 
 	_, ok1 := newss.Membership.Removed[2]

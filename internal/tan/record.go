@@ -554,7 +554,7 @@ func (w *writer) getNext() error {
 		w.fillHeader(true)
 	}
 	w.i = w.j
-	w.j = w.j + legacyHeaderSize
+	w.j += legacyHeaderSize
 	// Check if there is room in the block for the header.
 	if w.j > blockSize {
 		// Fill in the rest of the block with zeroes.

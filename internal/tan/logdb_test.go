@@ -33,12 +33,13 @@ import (
 var spawnChild = flag.Bool("spawn-child", false, "spawned child")
 
 func spawn(execName string) ([]byte, error) {
+	//nolint:gosec // test re-executes its own test binary (os.Args[0])
 	return exec.Command(execName, "-spawn-child",
 		"-test.v", "-test.run=TestFileLock$").CombinedOutput()
 }
 
 func TestFileLock(t *testing.T) {
-	dbdir := "db-dir"
+	dbdir := testDBDir
 	child := *spawnChild
 	msg := "failed to lock tan dir"
 	cfg := config.NodeHostConfig{
@@ -77,11 +78,11 @@ func TestListNodeInfo(t *testing.T) {
 		},
 	}
 	require.NoError(t, cfg.Prepare())
-	ldb, err := CreateTan(cfg, nil, []string{"db-dir"}, nil)
+	ldb, err := CreateTan(cfg, nil, []string{testDBDir}, nil)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, ldb.Close())
-		require.NoError(t, ldb.fs.RemoveAll("db-dir"))
+		require.NoError(t, ldb.fs.RemoveAll(testDBDir))
 	}()
 	rec := pb.Bootstrap{}
 	require.NoError(t, ldb.SaveBootstrapInfo(1, 1, rec))
@@ -89,7 +90,7 @@ func TestListNodeInfo(t *testing.T) {
 	require.NoError(t, ldb.SaveBootstrapInfo(3, 3, rec))
 	nodes, err := ldb.ListNodeInfo()
 	require.NoError(t, err)
-	require.Equal(t, 3, len(nodes))
+	require.Len(t, nodes, 3)
 	for _, n := range nodes {
 		require.True(t, n.ShardID == 1 && n.ReplicaID == 1 ||
 			n.ShardID == 2 && n.ReplicaID == 2 ||
@@ -103,7 +104,7 @@ func TestLogDBCanBeCreated(t *testing.T) {
 		Expert: config.ExpertConfig{FS: dvfs.NewMemFS()},
 	}
 	require.NoError(t, cfg.Prepare())
-	dirs := []string{"db-dir"}
+	dirs := []string{testDBDir}
 	ldb, err := CreateTan(cfg, nil, dirs, []string{})
 	require.Equal(t, tanLogDBName, ldb.Name())
 	require.NoError(t, err)
@@ -116,7 +117,7 @@ func TestSaveSnapshots(t *testing.T) {
 		Expert: config.ExpertConfig{FS: dvfs.NewMemFS()},
 	}
 	require.NoError(t, cfg.Prepare())
-	dirs := []string{"db-dir"}
+	dirs := []string{testDBDir}
 	ldb, err := CreateTan(cfg, nil, dirs, []string{})
 	require.NoError(t, err)
 	updates := []pb.Update{
@@ -147,7 +148,7 @@ func TestSaveRaftState(t *testing.T) {
 		Expert: config.ExpertConfig{FS: dvfs.NewMemFS()},
 	}
 	require.NoError(t, cfg.Prepare())
-	dirs := []string{"db-dir"}
+	dirs := []string{testDBDir}
 	ldb, err := CreateTan(cfg, nil, dirs, []string{})
 	require.NoError(t, err)
 	updates := []pb.Update{
@@ -185,7 +186,7 @@ func TestSaveRaftState(t *testing.T) {
 	var entries []pb.Entry
 	results, _, err := ldb.IterateEntries(entries, 0, 1, 1, 99, 101, math.MaxUint64)
 	require.NoError(t, err)
-	require.Equal(t, 2, len(results))
+	require.Len(t, results, 2)
 
 	rs, err := ldb.ReadRaftState(1, 1, 98)
 	require.NoError(t, err)
@@ -199,36 +200,14 @@ func TestConcurrentSaveRaftState(t *testing.T) {
 		Expert: config.ExpertConfig{FS: dvfs.NewMemFS()},
 	}
 	require.NoError(t, cfg.Prepare())
-	dirs := []string{"db-dir"}
+	dirs := []string{testDBDir}
 	ldb, err := CreateLogMultiplexedTan(cfg, nil, dirs, []string{})
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, ldb.Close())
 	}()
 	for i := range uint64(16) {
-		updates := []pb.Update{
-			{
-				ShardID:   1,
-				ReplicaID: 1,
-				Snapshot:  pb.Snapshot{Index: i * uint64(100), Term: 10},
-				Commit:    i * uint64(100), Term: 10,
-				EntriesToSave: []pb.Entry{
-					{Index: i*2 + 1, Term: 10},
-					{Index: i*2 + 2, Term: 10},
-				},
-			},
-			{
-				ShardID:   17,
-				ReplicaID: 1,
-				Snapshot:  pb.Snapshot{Index: i * uint64(200), Term: 20},
-				Commit:    i * uint64(200), Term: 20,
-				EntriesToSave: []pb.Entry{
-					{Index: i*3 + 1, Term: 20},
-					{Index: i*3 + 2, Term: 20},
-					{Index: i*3 + 3, Term: 20},
-				},
-			},
-		}
+		updates := makeMultiplexedTestUpdates(i)
 		require.NoError(t, ldb.SaveRaftState(updates, 1))
 	}
 	for i := range uint64(16) {
@@ -262,15 +241,15 @@ func TestConcurrentSaveRaftState(t *testing.T) {
 	var entries []pb.Entry
 	results, _, err := ldb.IterateEntries(entries, 0, 1, 1, 1, 33, math.MaxUint64)
 	require.NoError(t, err)
-	require.Equal(t, 32, len(results))
+	require.Len(t, results, 32)
 	var entries2 []pb.Entry
 	results, _, err = ldb.IterateEntries(entries2, 0, 17, 1, 1, 49, math.MaxUint64)
 	require.NoError(t, err)
-	require.Equal(t, 48, len(results))
+	require.Len(t, results, 48)
 	var entries3 []pb.Entry
 	results, _, err = ldb.IterateEntries(entries3, 0, 2, 1, 1, 33, math.MaxUint64)
 	require.NoError(t, err)
-	require.Equal(t, 32, len(results))
+	require.Len(t, results, 32)
 
 	ss1, err := ldb.GetSnapshot(1, 1)
 	require.NoError(t, err)

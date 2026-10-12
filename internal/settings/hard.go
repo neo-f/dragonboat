@@ -20,7 +20,7 @@ overwritten by using the json mechanism described below.
 package settings
 
 import (
-	"crypto/md5"
+	"crypto/md5" //nolint:gosec // used for data checksums, not security
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -106,7 +106,7 @@ func HardHash(execShards uint64,
 		false, // was the UseRangeDelete option
 		sessionCount,
 		batchSize)
-	mh := md5.New()
+	mh := md5.New() //nolint:gosec // used for data checksums, not security
 	if _, err := io.WriteString(mh, hashstr); err != nil {
 		panic(err)
 	}

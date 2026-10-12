@@ -21,7 +21,7 @@ import this package.
 package tests
 
 import (
-	"crypto/md5"
+	"crypto/md5" //nolint:gosec // used for data checksums, not security
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -42,7 +42,7 @@ import (
 
 // random delays
 func generateRandomDelay() {
-	v := rand.Uint64()
+	v := rand.Uint64() //nolint:gosec // non-cryptographic use: test jitter
 	if v%10000 == 0 {
 		time.Sleep(300 * time.Millisecond)
 	} else if v%1000 == 0 {
@@ -65,7 +65,7 @@ func getLargeRandomDelay(shardID uint64) uint64 {
 	if len(ioei) > 0 {
 		return 0
 	}
-	v := rand.Uint64() % 100
+	v := rand.Uint64() % 100 //nolint:gosec // non-cryptographic use: test jitter
 	if v == 0 {
 		return 30 * 1000
 	}
@@ -133,7 +133,8 @@ func (s *KVTest) Lookup(key any) (any, error) {
 	if s.aborted {
 		panic("Lookup() called after abort set to true")
 	}
-	v, ok := s.KVStore[string(key.([]byte))]
+	kb, _ := key.([]byte)
+	v, ok := s.KVStore[string(kb)]
 	generateRandomDelay()
 	if ok {
 		return []byte(v), nil
@@ -152,7 +153,7 @@ func (s *KVTest) Update(e sm.Entry) (sm.Result, error) {
 		panic("update called after Close()")
 	}
 	generateRandomDelay()
-	dataKv := s.pbkvPool.Get().(*kvpb.PBKV)
+	dataKv, _ := s.pbkvPool.Get().(*kvpb.PBKV)
 	err := dataKv.Unmarshal(e.Cmd)
 	if err != nil {
 		panic(err)
@@ -171,7 +172,7 @@ func (s *KVTest) saveExternalFile(fileCollection sm.ISnapshotFileCollection) {
 	fn := fmt.Sprintf("external-%d-%d-%d-%d.data",
 		s.ShardID, s.ReplicaID, s.Count, rn)
 	fp := filepath.Join(dir, fn)
-	f, err := os.Create(fp)
+	f, err := os.Create(fp) //nolint:gosec // internal trusted path
 	if err != nil {
 		panic(err)
 	}
@@ -301,7 +302,7 @@ func (s *KVTest) GetHash() (uint64, error) {
 		panic(err)
 	}
 
-	hash := md5.New()
+	hash := md5.New() //nolint:gosec // used for data checksums, not security
 	if _, err = hash.Write(data); err != nil {
 		panic(err)
 	}

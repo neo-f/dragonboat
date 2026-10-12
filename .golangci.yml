@@ -1,0 +1,151 @@
+version: "2"
+
+run:
+  concurrency: 4
+  timeout: 3m
+  tests: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 50
+
+linters:
+  # The standard set (errcheck, govet, ineffassign, staticcheck, unused)
+  # is always on via default: standard; everything below is additive.
+  enable:
+    # correctness
+    - errorlint # errors.Is/As and %w wrapping, no == on errors
+    - nilerr # return nil when err is non-nil
+    - nilnil # return (nil, nil)
+    - forcetypeassert # type assertions must use comma-ok
+    - copyloopvar # Go 1.22 loop variable semantics
+    - durationcheck # time.Duration * time.Duration bugs
+    - reassign # package-level variable reassignment
+    - predeclared # shadowing Go builtins
+    - dupword # duplicate words (the the, is is)
+    - errname # error naming conventions
+    - asciicheck # non-ASCII identifiers (trojan source)
+    - bidichk # bidi Unicode (trojan source CVE-2021-42574)
+    # style
+    - gocritic # opinionated style checks
+    - revive # naming and exported symbol conventions
+    - misspell
+    - dupword
+    - whitespace
+    - dupl # code duplication
+    # performance
+    - prealloc
+    - unconvert
+    - perfsprint
+    - goconst
+    # security
+    - gosec
+    # testing
+    - testifylint
+    - thelper
+    - usetesting # t.Setenv/t.TempDir over os equivalents
+    # modernization & regression guards
+    - modernize
+    - exptostd # no golang.org/x/exp where stdlib exists
+    - intrange
+    - usestdlibvars
+    - rowserrcheck
+    - gomoddirectives
+    - nolintlint
+    - depguard
+
+  disable:
+    # lll/gofumpt: would reformat the entire repo; revisit as a dedicated
+    # formatting sweep if ever wanted
+    - lll
+    # complexity metrics: raft consensus code has legitimately complex
+    # functions; these would produce non-actionable noise here
+    - gocyclo
+    - gocognit
+    - cyclop
+    - nestif
+    - funlen
+    # no HTTP/SQL client code in this repo
+    - bodyclose
+    - noctx
+    - sqlclosecheck
+    # the repo has its own logger package by design
+    - sloglint
+    - loggercheck
+    # repo tests do not use t.Parallel and mostly stay white-box
+    - paralleltest
+    - testpackage
+    # too opinionated / non-actionable for this codebase
+    - mnd
+    - varnamelen
+    - exhaustruct
+    - gochecknoglobals
+    - gochecknoinits
+    - wrapcheck
+    - err113
+    - godot
+    - wsl_v5
+    - iface
+    - nakedret
+    - noinlineerr
+    - unparam
+    - makezero
+    - mirror
+    - recvcheck
+    - containedctx
+    - fatcontext
+
+  settings:
+    dupl:
+      threshold: 100
+    errcheck:
+      check-type-assertions: true
+    goconst:
+      min-len: 3
+      min-occurrences: 4
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    gocritic:
+      disabled-checks:
+        # ifElseChain forces switch statements purely on style, it is not
+        # a correctness signal and is noisy on consensus code
+        - ifElseChain
+    gosec:
+      excludes:
+        # G115 flags every integer narrowing conversion; with the heavy
+        # uint64 arithmetic in this codebase it produced 132 findings of
+        # which none were actionable (see G115's known false positive rate)
+        - G115
+    revive:
+      rules:
+        - name: exported
+          disabled: true # internal packages export for cross-package use; doc comments are not uniformly required there
+        - name: package-comments
+          disabled: true
+    depguard:
+      rules:
+        main:
+          deny:
+            # regression guards: the vendored fork was deleted in favor of
+            # pebble/v2/vfs, math/rand was replaced by math/rand/v2
+            # ($ anchors make the match exact, otherwise math/rand/v2
+            # itself would be prefix-matched)
+            - pkg: github.com/lni/vfs$
+              desc: deleted vendored fork, use github.com/cockroachdb/pebble/v2/vfs via internal/vfs
+            - pkg: math/rand$
+              desc: use math/rand/v2
+            - pkg: golang.org/x/exp/rand$
+              desc: use math/rand/v2
+
+  exclusions:
+    paths:
+      - docs$
+      - examples$
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax

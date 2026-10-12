@@ -275,10 +275,8 @@ func (l *LogDB) concurrentSaveState(updates []pb.Update, shardID uint64) error {
 	for idx, ud := range updates {
 		if idx == 0 {
 			usedShardID = l.collection.key(ud.ShardID)
-		} else {
-			if usedShardID != l.collection.key(ud.ShardID) {
-				panic("shard ID changed")
-			}
+		} else if usedShardID != l.collection.key(ud.ShardID) {
+			panic("shard ID changed")
 		}
 		db, err := l.getDB(ud.ShardID, ud.ReplicaID)
 		if err != nil {

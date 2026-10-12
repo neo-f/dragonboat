@@ -91,5 +91,5 @@ func (c *context) SetWriteBatch(wb any) {
 	if c.wb != nil {
 		panic("c.wb is not nil")
 	}
-	c.wb = wb.(kv.IWriteBatch)
+	c.wb, _ = wb.(kv.IWriteBatch)
 }

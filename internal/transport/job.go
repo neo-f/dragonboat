@@ -240,7 +240,11 @@ func (j *job) sendChunks(chunks []pb.Chunk) error {
 			return err
 		}
 		if f := j.postSend.Load(); f != nil {
-			f.(func(pb.Chunk))(chunk)
+			fn, ok := f.(func(pb.Chunk))
+			if !ok {
+				plog.Panicf("unexpected postSend hook type %T", f)
+			}
+			fn(chunk)
 		}
 	}
 	return nil
@@ -249,7 +253,11 @@ func (j *job) sendChunks(chunks []pb.Chunk) error {
 func (j *job) sendChunk(c pb.Chunk,
 	conn raftio.ISnapshotConnection) error {
 	if f := j.preSend.Load(); f != nil {
-		updated, shouldSend := f.(StreamChunkSendFunc)(c)
+		fn, ok := f.(StreamChunkSendFunc)
+		if !ok {
+			plog.Panicf("unexpected preSend hook type %T", f)
+		}
+		updated, shouldSend := fn(c)
 		if !shouldSend {
 			plog.Debugf("chunk to %s skipped", dn(c.ShardID, c.ReplicaID))
 			return errChunkSendSkipped

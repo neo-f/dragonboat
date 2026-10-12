@@ -672,7 +672,8 @@ func (nh *NodeHost) SyncGetShardMembership(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	return v.(*Membership), nil
+	m, _ := v.(*Membership)
+	return m, nil
 }
 
 // GetLeaderID returns the leader replica ID of the specified Raft shard based
@@ -1355,7 +1356,7 @@ func (nh *NodeHost) HasNodeInfo(shardID uint64, replicaID uint64) bool {
 
 // GetNodeHostInfo returns a NodeHostInfo instance that contains all details
 // of the NodeHost, this includes details of all Raft shards managed by the
-// the NodeHost instance.
+// NodeHost instance.
 func (nh *NodeHost) GetNodeHostInfo(opt NodeHostInfoOption) *NodeHostInfo {
 	nhi := &NodeHostInfo{
 		NodeHostID:    nh.ID(),
@@ -1462,14 +1463,17 @@ func (nh *NodeHost) getShard(shardID uint64) (*node, bool) {
 	if !ok {
 		return nil, false
 	}
-	return n.(*node), true
+	nd, _ := n.(*node)
+	return nd, true
 }
 
 func (nh *NodeHost) forEachShard(f func(uint64, *node) bool) uint64 {
 	nh.mu.RLock()
 	defer nh.mu.RUnlock()
 	nh.mu.shards.Range(func(k, v any) bool {
-		return f(k.(uint64), v.(*node))
+		shardID, _ := k.(uint64)
+		n, _ := v.(*node)
+		return f(shardID, n)
 	})
 	return nh.mu.cci
 }
@@ -1715,7 +1719,8 @@ func (nh *NodeHost) handleLogDBInfo(info config.LogDBInfo) {
 
 func (nh *NodeHost) getLogDBMetrics(shard uint64) *logDBMetrics {
 	if v, ok := nh.mu.lm.Load(shard); ok {
-		return v.(*logDBMetrics)
+		m, _ := v.(*logDBMetrics)
+		return m
 	}
 	lm := &logDBMetrics{}
 	nh.mu.lm.Store(shard, lm)
@@ -1795,7 +1800,7 @@ func (nh *NodeHost) stopNode(shardID uint64, replicaID uint64, check bool) error
 	if !ok {
 		return ErrShardNotFound
 	}
-	n := v.(*node)
+	n, _ := v.(*node)
 	if check && n.replicaID != replicaID {
 		return ErrShardNotFound
 	}

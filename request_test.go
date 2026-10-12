@@ -209,7 +209,7 @@ func TestPendingLeaderTransferCanBeCreated(t *testing.T) {
 func TestLeaderTransferCanBeRequested(t *testing.T) {
 	p := newPendingLeaderTransfer()
 	err := p.request(1)
-	assert.NoError(t, err, "failed to request leadership transfer")
+	require.NoError(t, err, "failed to request leadership transfer")
 	assert.Len(t, p.leaderTransferC, 1)
 }
 
@@ -219,7 +219,7 @@ func TestInvalidLeaderTransferIsNotAllowed(t *testing.T) {
 	assert.Equal(t, ErrInvalidTarget, err)
 
 	err = p.request(1)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = p.request(2)
 	assert.Equal(t, ErrSystemBusy, err)
@@ -231,7 +231,7 @@ func TestCanGetExitingLeaderTransferRequest(t *testing.T) {
 	assert.False(t, ok)
 
 	err := p.request(1)
-	assert.NoError(t, err, "failed to request leadership transfer")
+	require.NoError(t, err, "failed to request leadership transfer")
 
 	v, ok := p.get()
 	assert.True(t, ok)
@@ -291,7 +291,7 @@ func TestPendingSnapshotCanBeRequested(t *testing.T) {
 	require.NotNil(t, ss)
 
 	assert.NotNil(t, ps.pending)
-	assert.True(t, ss.deadline > ps.getTick())
+	assert.Greater(t, ss.deadline, ps.getTick())
 	select {
 	case <-snapshotC:
 	default:
@@ -303,7 +303,7 @@ func TestPendingSnapshotCanReturnBusy(t *testing.T) {
 	snapshotC := make(chan rsm.SSRequest, 1)
 	ps := newPendingSnapshot(snapshotC)
 	_, err := ps.request(rsm.UserRequested, "", false, 0, 0, 10)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	_, err = ps.request(rsm.UserRequested, "", false, 0, 0, 10)
 	assert.Equal(t, ErrSystemBusy, err)
 }
@@ -353,38 +353,34 @@ func TestPendingSnapshotCanBeGCed(t *testing.T) {
 	}
 }
 
-func TestPendingSnapshotCanBeApplied(t *testing.T) {
+func applyPendingSnapshot(t *testing.T, ignored bool) RequestResult {
+	t.Helper()
 	snapshotC := make(chan rsm.SSRequest, 1)
 	ps := newPendingSnapshot(snapshotC)
 	ss, err := ps.request(rsm.UserRequested, "", false, 0, 0, 100)
 	require.NoError(t, err)
 	require.NotNil(t, ss)
 
-	ps.apply(ss.key, false, false, 123)
+	ps.apply(ss.key, ignored, false, 123)
 	select {
 	case v := <-ss.ResultC():
-		assert.Equal(t, uint64(123), v.SnapshotIndex())
-		assert.True(t, v.Completed())
+		return v
 	default:
 		assert.Fail(t, "ss is not applied")
+		return RequestResult{}
 	}
 }
 
-func TestPendingSnapshotCanBeIgnored(t *testing.T) {
-	snapshotC := make(chan rsm.SSRequest, 1)
-	ps := newPendingSnapshot(snapshotC)
-	ss, err := ps.request(rsm.UserRequested, "", false, 0, 0, 100)
-	require.NoError(t, err)
-	require.NotNil(t, ss)
+func TestPendingSnapshotCanBeApplied(t *testing.T) {
+	v := applyPendingSnapshot(t, false)
+	assert.Equal(t, uint64(123), v.SnapshotIndex())
+	assert.True(t, v.Completed())
+}
 
-	ps.apply(ss.key, true, false, 123)
-	select {
-	case v := <-ss.ResultC():
-		assert.Equal(t, uint64(0), v.SnapshotIndex())
-		assert.True(t, v.Rejected())
-	default:
-		assert.Fail(t, "ss is not applied")
-	}
+func TestPendingSnapshotCanBeIgnored(t *testing.T) {
+	v := applyPendingSnapshot(t, true)
+	assert.Equal(t, uint64(0), v.SnapshotIndex())
+	assert.True(t, v.Rejected())
 }
 
 func TestPendingSnapshotIsIdentifiedByTheKey(t *testing.T) {
@@ -417,7 +413,7 @@ func TestCompactionOverheadDetailsIsRecorded(t *testing.T) {
 	snapshotC := make(chan rsm.SSRequest, 1)
 	ps := newPendingSnapshot(snapshotC)
 	_, err := ps.request(rsm.UserRequested, "", true, 123, 0, 100)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	select {
 	case req := <-snapshotC:
@@ -503,13 +499,13 @@ func TestConfigChangeCanBeRequested(t *testing.T) {
 	pcc, c := getPendingConfigChange(false)
 	var cc pb.ConfigChange
 	rs, err := pcc.request(cc, 100)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, rs)
 	assert.NotNil(t, pcc.pending)
 	assert.Len(t, c, 1)
 
 	_, err = pcc.request(cc, 100)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, ErrSystemBusy, err)
 
 	pcc.close()
@@ -525,7 +521,7 @@ func TestPendingConfigChangeCanReturnBusy(t *testing.T) {
 	pcc, _ := getPendingConfigChange(false)
 	var cc pb.ConfigChange
 	_, err := pcc.request(cc, 100)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	_, err = pcc.request(cc, 100)
 	assert.Equal(t, ErrSystemBusy, err)
@@ -536,7 +532,7 @@ func TestConfigChangeCanExpire(t *testing.T) {
 	var cc pb.ConfigChange
 	tickCount := uint64(100)
 	rs, err := pcc.request(cc, tickCount)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	for i := range tickCount {
 		pcc.tick(i)
@@ -548,7 +544,7 @@ func TestConfigChangeCanExpire(t *testing.T) {
 	default:
 	}
 
-	for i := uint64(0); i < defaultGCTick+1; i++ {
+	for i := range defaultGCTick + 1 {
 		pcc.tick(i + tickCount)
 		pcc.gc()
 	}
@@ -565,7 +561,7 @@ func TestCommittedConfigChangeRequestCanBeNotified(t *testing.T) {
 	pcc, _ := getPendingConfigChange(true)
 	var cc pb.ConfigChange
 	rs, err := pcc.request(cc, 100)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	pcc.committed(rs.key)
 	select {
 	case <-rs.committedC:
@@ -578,7 +574,7 @@ func TestCompletedConfigChangeRequestCanBeNotified(t *testing.T) {
 	pcc, _ := getPendingConfigChange(false)
 	var cc pb.ConfigChange
 	rs, err := pcc.request(cc, 100)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	select {
 	case <-rs.ResultC():
@@ -600,7 +596,7 @@ func TestConfigChangeRequestCanNotBeNotifiedWithDifferentKey(t *testing.T) {
 	pcc, _ := getPendingConfigChange(false)
 	var cc pb.ConfigChange
 	rs, err := pcc.request(cc, 100)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	select {
 	case <-rs.ResultC():
@@ -621,7 +617,7 @@ func TestConfigChangeCanBeDropped(t *testing.T) {
 	pcc, _ := getPendingConfigChange(false)
 	var cc pb.ConfigChange
 	rs, err := pcc.request(cc, 100)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	select {
 	case <-rs.ResultC():
@@ -643,7 +639,7 @@ func TestConfigChangeWithDifferentKeyWillNotBeDropped(t *testing.T) {
 	pcc, _ := getPendingConfigChange(false)
 	var cc pb.ConfigChange
 	rs, err := pcc.request(cc, 100)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	select {
 	case <-rs.ResultC():
@@ -693,7 +689,7 @@ func TestPendingProposalCanBeCreatedAndClosed(t *testing.T) {
 
 func countPendingProposal(p pendingProposal) int {
 	total := 0
-	for i := uint64(0); i < p.ps; i++ {
+	for i := range p.ps {
 		total += len(p.shards[i].pending)
 	}
 	return total
@@ -879,7 +875,7 @@ func TestProposalCanBeExpired(t *testing.T) {
 	default:
 	}
 
-	for i := uint64(0); i < defaultGCTick+1; i++ {
+	for i := range defaultGCTick + 1 {
 		pp.tick(i + tickCount)
 		pp.gc()
 	}
@@ -896,7 +892,7 @@ func TestProposalErrorsAreReported(t *testing.T) {
 	pp, c := getPendingProposal(false)
 	for range 5 {
 		_, err := pp.propose(getBlankTestSession(), []byte("test data"), 100)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	var cq []pb.Entry
@@ -932,7 +928,7 @@ func TestClosePendingProposalIgnoresStepEngineActivities(t *testing.T) {
 	default:
 	}
 
-	for i := uint64(0); i < pp.ps; i++ {
+	for i := range pp.ps {
 		pp.shards[i].stopped = true
 	}
 	pp.applied(rs.clientID, rs.seriesID, rs.key, sm.Result{Value: 1}, false)
@@ -1058,6 +1054,7 @@ func TestPendingReadIndexCanBeDropped(t *testing.T) {
 }
 
 func testPendingReadIndexCanExpire(t *testing.T, addReady bool) {
+	t.Helper()
 	pp, _ := getPendingReadIndex()
 	rs, err := pp.read(100)
 	require.NoError(t, err)
@@ -1161,7 +1158,7 @@ func TestReadIndexAllocationCount(t *testing.T) {
 		rs.readyToRelease.set()
 		rs.Release()
 	})
-	assert.Equal(t, float64(0), ac)
+	assert.Zero(t, ac)
 }
 
 func TestPendingRaftLogQueryCanBeCreated(t *testing.T) {
@@ -1188,7 +1185,7 @@ func TestPendingRaftLogQueryCanAddRequest(t *testing.T) {
 	p := newPendingRaftLogQuery()
 	rs, err := p.add(100, 200, 300)
 	assert.NotNil(t, rs)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	rs, err = p.add(200, 200, 300)
 	assert.Equal(t, ErrSystemBusy, err)

@@ -70,8 +70,9 @@ func TestChunkWriterCanBeWritten(t *testing.T) {
 	err := cw.Close()
 	require.NoError(t, err, "failed to flush")
 
-	chunks := cw.sink.(*testSink).chunks
-	require.Equal(t, 13, len(chunks), "chunks count mismatch")
+	sink, _ := cw.sink.(*testSink)
+	chunks := sink.chunks
+	require.Len(t, chunks, 13, "chunks count mismatch")
 
 	for idx, chunk := range chunks {
 		switch idx {
@@ -154,7 +155,7 @@ func TestFailedChunkWriterWillNotSendTheTailChunk(t *testing.T) {
 	cw.failed = true
 	require.NoError(t, cw.Close())
 
-	chunks := cw.sink.(*testSink).chunks
+	chunks := sink.chunks
 	for idx, chunk := range chunks {
 		switch idx {
 		case 0:
@@ -166,7 +167,7 @@ func TestFailedChunkWriterWillNotSendTheTailChunk(t *testing.T) {
 			require.NoError(t, err)
 
 			expectedSize := HeaderSize + tailSize
-			require.Equal(t, uint64(len(chunk.Data)), expectedSize,
+			require.Equal(t, expectedSize, uint64(len(chunk.Data)),
 				"unexpected data size")
 
 			checksum := header.HeaderChecksum

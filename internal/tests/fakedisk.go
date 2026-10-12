@@ -72,7 +72,7 @@ func (f *FakeDiskSM) Update(ents []sm.Entry) ([]sm.Entry, error) {
 		if e.Index <= f.initialApplied {
 			panic("already applied index received again")
 		} else {
-			f.count = f.count + 1
+			f.count++
 			e.Result = sm.Result{Value: f.count}
 		}
 	}
@@ -104,7 +104,7 @@ func (f *FakeDiskSM) SaveSnapshot(ctx any,
 		f.aborted = true
 		return sm.ErrSnapshotAborted
 	}
-	pit := ctx.(*FakeDiskSM)
+	pit, _ := ctx.(*FakeDiskSM)
 	fmt.Printf("saving initial %d, count %d\n", pit.initialApplied, pit.count)
 	v := make([]byte, 8)
 	binary.LittleEndian.PutUint64(v, pit.initialApplied)
@@ -195,7 +195,7 @@ func (s *SimDiskSM) PrepareSnapshot() (any, error) {
 // SaveSnapshot ...
 func (s *SimDiskSM) SaveSnapshot(ctx any,
 	w io.Writer, stopc <-chan struct{}) error {
-	pit := ctx.(*SimDiskSM)
+	pit, _ := ctx.(*SimDiskSM)
 	v := make([]byte, 8)
 	binary.LittleEndian.PutUint64(v, pit.applied)
 	_, err := w.Write(v)

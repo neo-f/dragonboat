@@ -90,7 +90,8 @@ func (f *trackedFile) Close() error {
 }
 
 // ReportLeakedFD reports leaked file fds.
-func ReportLeakedFD(fs IFS, t *testing.T) {
+func ReportLeakedFD(t *testing.T, fs IFS) {
+	t.Helper()
 	mf, ok := fs.(*MemFS)
 	if !ok {
 		return

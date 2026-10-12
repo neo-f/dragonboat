@@ -846,7 +846,7 @@ func (p *pendingReadIndex) read(timeoutTick uint64) (*RequestState, error) {
 	if timeoutTick == 0 {
 		return nil, ErrTimeoutTooSmall
 	}
-	req := p.pool.Get().(*RequestState)
+	req, _ := p.pool.Get().(*RequestState)
 	req.reuse(false)
 	req.notifyCommit = false
 	req.deadline = p.getTick() + timeoutTick
@@ -995,6 +995,7 @@ func getRng(shardID uint64, replicaID uint64, shard uint64) *keyGenerator {
 	fileutil.MustWrite(m, []byte(seedStr))
 	sum := m.Sum(nil)
 	seed := binary.LittleEndian.Uint64(sum)
+	//nolint:gosec // non-cryptographic use: internal proposal keys need uniqueness, not secrecy
 	return &keyGenerator{rand: rand.New(rand.NewPCG(seed, 0))}
 }
 
@@ -1049,13 +1050,13 @@ func (p *pendingProposal) nextKey(clientID uint64) uint64 {
 }
 
 func (p *pendingProposal) tick(tick uint64) {
-	for i := uint64(0); i < p.ps; i++ {
+	for i := range p.ps {
 		p.shards[i].tick(tick)
 	}
 }
 
 func (p *pendingProposal) gc() {
-	for i := uint64(0); i < p.ps; i++ {
+	for i := range p.ps {
 		pp := p.shards[i]
 		pp.gc()
 	}
@@ -1094,7 +1095,7 @@ func (p *proposalShard) propose(session *client.Session,
 		entry.Type = pb.EncodedEntry
 		entry.Cmd = preparePayload(p.cfg.EntryCompressionType, cmd)
 	}
-	req := p.pool.Get().(*RequestState)
+	req, _ := p.pool.Get().(*RequestState)
 	req.reuse(p.notifyCommit)
 	req.clientID = session.ClientID
 	req.seriesID = session.SeriesID

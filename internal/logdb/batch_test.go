@@ -114,7 +114,7 @@ func TestEntryBatchFieldsCanBeCompacted(t *testing.T) {
 	eb1 = compactBatchFields(eb1)
 	assert.False(t, reflect.DeepEqual(&eb1, &eb2), "eb not changed")
 	assert.Less(t, eb1.Size(), eb2.Size(), "size didn't reduce")
-	for i := 0; i < len(eb1.Entries); i++ {
+	for i := range len(eb1.Entries) {
 		if i == 0 {
 			assert.NotZero(t, eb1.Entries[i].Index, "first index is 0, %+v",
 				eb1.Entries)
@@ -238,7 +238,7 @@ func TestGetMergedFirstBatch(t *testing.T) {
 		assert.Equal(t, tt.mlast, result.Entries[len(result.Entries)-1].Index,
 			"%d, last index %d, want %d", idx,
 			result.Entries[len(result.Entries)-1].Index, tt.mlast)
-		for i := 0; i < len(result.Entries); i++ {
+		for i := range len(result.Entries) {
 			if result.Entries[i].Index >= tt.newindex {
 				assert.Equal(t, uint64(2), result.Entries[i].Term, "unexpected term")
 			}
@@ -248,6 +248,7 @@ func TestGetMergedFirstBatch(t *testing.T) {
 
 func TestEntryBatchWillNotBeMergedToPreviousBatch(t *testing.T) {
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		shardID := uint64(0)
 		replicaID := uint64(4)
 		e1 := pb.Entry{
@@ -261,7 +262,7 @@ func TestEntryBatchWillNotBeMergedToPreviousBatch(t *testing.T) {
 			ReplicaID:     replicaID,
 		}
 		err := db.SaveRaftState([]pb.Update{ud}, 1)
-		assert.NoError(t, err, "failed to save recs")
+		require.NoError(t, err, "failed to save recs")
 		nextIndex := 1 + batchSize
 		e2 := pb.Entry{
 			Term:  1,
@@ -274,15 +275,16 @@ func TestEntryBatchWillNotBeMergedToPreviousBatch(t *testing.T) {
 			ReplicaID:     replicaID,
 		}
 		err = db.SaveRaftState([]pb.Update{ud}, 1)
-		assert.NoError(t, err, "failed to save recs")
-		maxIndex, err := db.(*ShardedDB).shards[0].getMaxIndex(shardID,
+		require.NoError(t, err, "failed to save recs")
+		sdb, _ := db.(*ShardedDB)
+		maxIndex, err := sdb.shards[0].getMaxIndex(shardID,
 			replicaID)
-		assert.NoError(t, err, "failed to get max index")
+		require.NoError(t, err, "failed to get max index")
 		assert.Equal(t, nextIndex, maxIndex, "unexpected max index")
-		eb, ok := db.(*ShardedDB).shards[0].entries.(*batchedEntries).
-			getBatchFromDB(shardID, replicaID, 1)
+		be, _ := sdb.shards[0].entries.(*batchedEntries)
+		eb, ok := be.getBatchFromDB(shardID, replicaID, 1)
 		assert.True(t, ok, "failed to get the eb")
-		assert.Equal(t, 1, len(eb.Entries), "unexpected len %d, want 1",
+		assert.Len(t, eb.Entries, 1, "unexpected len %d, want 1",
 			len(eb.Entries))
 		assert.Equal(t, nextIndex, eb.Entries[0].Index,
 			"unexpected index %d, want 10", eb.Entries[0].Index)
@@ -293,6 +295,7 @@ func TestEntryBatchWillNotBeMergedToPreviousBatch(t *testing.T) {
 
 func TestEntryBatchMergedNotLastBatch(t *testing.T) {
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		shardID := uint64(0)
 		replicaID := uint64(4)
 		ud := pb.Update{
@@ -305,7 +308,7 @@ func TestEntryBatchMergedNotLastBatch(t *testing.T) {
 			ud.EntriesToSave = append(ud.EntriesToSave, e)
 		}
 		err := db.SaveRaftState([]pb.Update{ud}, 1)
-		assert.NoError(t, err, "failed to save recs")
+		require.NoError(t, err, "failed to save recs")
 		ud = pb.Update{
 			EntriesToSave: make([]pb.Entry, 0),
 			ShardID:       shardID,
@@ -316,17 +319,18 @@ func TestEntryBatchMergedNotLastBatch(t *testing.T) {
 			ud.EntriesToSave = append(ud.EntriesToSave, e)
 		}
 		err = db.SaveRaftState([]pb.Update{ud}, 1)
-		assert.NoError(t, err, "failed to save recs")
-		maxIndex, err := db.(*ShardedDB).shards[0].getMaxIndex(shardID,
+		require.NoError(t, err, "failed to save recs")
+		sdb, _ := db.(*ShardedDB)
+		maxIndex, err := sdb.shards[0].getMaxIndex(shardID,
 			replicaID)
-		assert.NoError(t, err, "failed to get max index")
+		require.NoError(t, err, "failed to get max index")
 		assert.Equal(t, batchSize+2, maxIndex, "unexpected max index")
-		eb, ok := db.(*ShardedDB).shards[0].entries.(*batchedEntries).
-			getBatchFromDB(shardID, replicaID, 0)
+		be, _ := sdb.shards[0].entries.(*batchedEntries)
+		eb, ok := be.getBatchFromDB(shardID, replicaID, 0)
 		assert.True(t, ok, "failed to get the eb")
 		assert.Equal(t, batchSize-1, uint64(len(eb.Entries)),
 			"unexpected len %d, want %d", len(eb.Entries), batchSize-1)
-		for i := uint64(0); i < batchSize-1; i++ {
+		for i := range batchSize - 1 {
 			e := eb.Entries[i]
 			assert.Equal(t, i+1, e.Index, "unexpected index %d, want %d",
 				e.Index, i+1)
@@ -343,6 +347,7 @@ func TestEntryBatchMergedNotLastBatch(t *testing.T) {
 
 func TestSaveEntriesAcrossMultipleBatches(t *testing.T) {
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		shardID := uint64(0)
 		replicaID := uint64(4)
 		e1 := pb.Entry{
@@ -356,7 +361,7 @@ func TestSaveEntriesAcrossMultipleBatches(t *testing.T) {
 			ReplicaID:     replicaID,
 		}
 		err := db.SaveRaftState([]pb.Update{ud}, 1)
-		assert.NoError(t, err, "failed to save recs")
+		require.NoError(t, err, "failed to save recs")
 		e2 := pb.Entry{
 			Term:  1,
 			Index: 2,
@@ -368,7 +373,7 @@ func TestSaveEntriesAcrossMultipleBatches(t *testing.T) {
 			ReplicaID:     replicaID,
 		}
 		err = db.SaveRaftState([]pb.Update{ud}, 1)
-		assert.NoError(t, err, "failed to save recs")
+		require.NoError(t, err, "failed to save recs")
 		ud = pb.Update{
 			EntriesToSave: make([]pb.Entry, 0),
 			ShardID:       shardID,
@@ -382,14 +387,15 @@ func TestSaveEntriesAcrossMultipleBatches(t *testing.T) {
 			ud.EntriesToSave = append(ud.EntriesToSave, e)
 		}
 		err = db.SaveRaftState([]pb.Update{ud}, 1)
-		assert.NoError(t, err, "failed to save recs")
+		require.NoError(t, err, "failed to save recs")
 		ents, _, err := db.IterateEntries([]pb.Entry{}, 0,
 			shardID, replicaID, 1, batchSize+2, math.MaxUint64)
-		assert.NoError(t, err, "iterate entries failed %v", err)
+		require.NoError(t, err, "iterate entries failed %v", err)
 		assert.Equal(t, batchSize+1, uint64(len(ents)),
 			"ents sz %d, want %d", len(ents), batchSize+1)
-		eb, ok := db.(*ShardedDB).shards[0].entries.(*batchedEntries).
-			getBatchFromDB(shardID, replicaID, 1)
+		sdb, _ := db.(*ShardedDB)
+		be, _ := sdb.shards[0].entries.(*batchedEntries)
+		eb, ok := be.getBatchFromDB(shardID, replicaID, 1)
 		assert.True(t, ok, "failed to get first batch")
 		for _, e := range eb.Entries {
 			plog.Infof("idx %d", e.Index)

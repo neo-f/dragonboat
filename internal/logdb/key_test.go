@@ -30,7 +30,7 @@ func TestEntryKeysOrdered(t *testing.T) {
 		k1.SetEntryKey(100, 100, i)
 		k2 := p.get()
 		k2.SetEntryKey(100, 100, i+1)
-		require.True(t, bytes.Compare(k1.Key(), k2.Key()) < 0)
+		require.Negative(t, bytes.Compare(k1.Key(), k2.Key()))
 	}
 	k1 := p.get()
 	k1.SetEntryKey(100, 100, 0)
@@ -38,8 +38,8 @@ func TestEntryKeysOrdered(t *testing.T) {
 	k2.SetEntryKey(100, 100, 1)
 	k3 := p.get()
 	k3.SetEntryKey(100, 100, math.MaxUint64)
-	require.True(t, bytes.Compare(k1.Key(), k2.Key()) < 0)
-	require.True(t, bytes.Compare(k2.Key(), k3.Key()) < 0)
+	require.Negative(t, bytes.Compare(k1.Key(), k2.Key()))
+	require.Negative(t, bytes.Compare(k2.Key(), k3.Key()))
 }
 
 func TestSnapshotKeysOrdered(t *testing.T) {
@@ -48,15 +48,15 @@ func TestSnapshotKeysOrdered(t *testing.T) {
 	k1.setSnapshotKey(100, 100, 0)
 	k2 := p.get()
 	k2.setSnapshotKey(100, 100, 1)
-	require.True(t, bytes.Compare(k1.Key(), k2.Key()) < 0)
+	require.Negative(t, bytes.Compare(k1.Key(), k2.Key()))
 }
 
 func TestNodeInfoKeyCanBeParsed(t *testing.T) {
 	p := newLogDBKeyPool()
 	for range 1024 {
 		k1 := p.get()
-		cid := rand.Uint64()
-		nid := rand.Uint64()
+		cid := rand.Uint64() //nolint:gosec // non-cryptographic use: test key data
+		nid := rand.Uint64() //nolint:gosec // non-cryptographic use: test key data
 		k1.setNodeInfoKey(cid, nid)
 		v1, v2 := parseNodeInfoKey(k1.Key())
 		require.Equal(t, cid, v1)

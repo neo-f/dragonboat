@@ -521,7 +521,11 @@ func lazyFree(reqs []pb.Message,
 func (t *Transport) sendMessageBatch(conn raftio.IConnection,
 	batch pb.MessageBatch) error {
 	if f := t.preSendBatch.Load(); f != nil {
-		updated, shouldSend := f.(SendMessageBatchFunc)(batch)
+		fn, ok := f.(SendMessageBatchFunc)
+		if !ok {
+			plog.Panicf("unexpected preSendBatch hook type %T", f)
+		}
+		updated, shouldSend := fn(batch)
 		if !shouldSend {
 			return errBatchSendSkipped
 		}

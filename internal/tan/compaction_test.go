@@ -41,6 +41,7 @@ func TestRemoveEntries(t *testing.T) {
 		FS:                  fs,
 	}
 	tf := func(t *testing.T, db *db) {
+		t.Helper()
 		buf := make([]byte, 1024)
 		for i := uint64(1); i < uint64(100); i++ {
 			u := pb.Update{
@@ -61,15 +62,16 @@ func TestRemoveEntries(t *testing.T) {
 	runTanTest(t, opts, tf, fs)
 
 	tf = func(t *testing.T, db *db) {
-		require.Equal(t, 3, len(db.mu.versions.currentVersion().files))
+		t.Helper()
+		require.Len(t, db.mu.versions.currentVersion().files, 3)
 		var entries []pb.Entry
 		entries, _, err := db.getEntries(2, 3, entries, 0, 99, 100, math.MaxUint64)
 		require.NoError(t, err)
-		require.Equal(t, 0, len(entries))
+		require.Empty(t, entries)
 		var entries1 []pb.Entry
 		entries1, _, err = db.getEntries(2, 3, entries1, 0, 98, 98, math.MaxUint64)
 		require.NoError(t, err)
-		require.Equal(t, 0, len(entries1))
+		require.Empty(t, entries1)
 
 		for range 3000 {
 			ls, err := db.opts.FS.List(db.dirname)
@@ -97,42 +99,46 @@ func TestRemoveEntries(t *testing.T) {
 	runTanTest(t, opts, tf, fs)
 }
 
+func makeMultiplexedTestUpdates(i uint64) []pb.Update {
+	return []pb.Update{
+		{
+			ShardID:   1,
+			ReplicaID: 1,
+			Snapshot:  pb.Snapshot{Index: i * uint64(100), Term: 10},
+			Commit:    i * uint64(100), Term: 10,
+			EntriesToSave: []pb.Entry{
+				{Index: i*2 + 1, Term: 10},
+				{Index: i*2 + 2, Term: 10},
+			},
+		},
+		{
+			ShardID:   17,
+			ReplicaID: 1,
+			Snapshot:  pb.Snapshot{Index: i * uint64(200), Term: 20},
+			Commit:    i * uint64(200), Term: 20,
+			EntriesToSave: []pb.Entry{
+				{Index: i*3 + 1, Term: 20},
+				{Index: i*3 + 2, Term: 20},
+				{Index: i*3 + 3, Term: 20},
+			},
+		},
+	}
+}
+
 func TestRemovedEntriesMultiplexedLogSetup(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	cfg := config.NodeHostConfig{
 		Expert: config.ExpertConfig{FS: dvfs.NewMemFS()},
 	}
 	require.NoError(t, cfg.Prepare())
-	dirs := []string{"db-dir"}
+	dirs := []string{testDBDir}
 	ldb, err := CreateLogMultiplexedTan(cfg, nil, dirs, []string{})
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, ldb.Close())
 	}()
 	for i := range uint64(16) {
-		updates := []pb.Update{
-			{
-				ShardID:   1,
-				ReplicaID: 1,
-				Snapshot:  pb.Snapshot{Index: i * uint64(100), Term: 10},
-				Commit:    i * uint64(100), Term: 10,
-				EntriesToSave: []pb.Entry{
-					{Index: i*2 + 1, Term: 10},
-					{Index: i*2 + 2, Term: 10},
-				},
-			},
-			{
-				ShardID:   17,
-				ReplicaID: 1,
-				Snapshot:  pb.Snapshot{Index: i * uint64(200), Term: 20},
-				Commit:    i * uint64(200), Term: 20,
-				EntriesToSave: []pb.Entry{
-					{Index: i*3 + 1, Term: 20},
-					{Index: i*3 + 2, Term: 20},
-					{Index: i*3 + 3, Term: 20},
-				},
-			},
-		}
+		updates := makeMultiplexedTestUpdates(i)
 		require.NoError(t, ldb.SaveRaftState(updates, 1))
 		db, err := ldb.collection.getDB(1, 1)
 		require.NoError(t, err)
@@ -148,12 +154,12 @@ func TestRemovedEntriesMultiplexedLogSetup(t *testing.T) {
 	// not suppose tp have any log file removed
 	require.NoError(t, ldb.RemoveEntriesTo(1, 1, 32))
 	current = db.mu.versions.currentVersion()
-	require.Equal(t, fileCount, len(current.files))
+	require.Len(t, current.files, fileCount)
 	// this should trigger log compaction
 	require.NoError(t, ldb.RemoveEntriesTo(17, 1, 48))
 	current = db.mu.versions.currentVersion()
 	// a log file and an empty log file just created by the last switchToNewLog
-	require.Equal(t, 2, len(current.files))
+	require.Len(t, current.files, 2)
 }
 
 func TestRemoveAll(t *testing.T) {
@@ -164,6 +170,7 @@ func TestRemoveAll(t *testing.T) {
 		FS:                  fs,
 	}
 	tf := func(t *testing.T, db *db) {
+		t.Helper()
 		u := pb.Update{
 			ShardID:   2,
 			ReplicaID: 3,
@@ -221,6 +228,7 @@ func TestInstallSnapshot(t *testing.T) {
 		FS:                  fs,
 	}
 	tf := func(t *testing.T, db *db) {
+		t.Helper()
 		u := pb.Update{
 			ShardID:   2,
 			ReplicaID: 3,
@@ -251,7 +259,7 @@ func TestInstallSnapshot(t *testing.T) {
 			var result []pb.Entry
 			entries, _, err := db.getEntries(2, 3, result, 0, i, i, 1024)
 			require.NoError(t, err)
-			require.Equal(t, 0, len(entries))
+			require.Empty(t, entries)
 		}
 
 		rs, err := db.getRaftState(2, 3, 50)
@@ -268,7 +276,10 @@ func TestInstallSnapshot(t *testing.T) {
 func TestScanObsoleteFiles(t *testing.T) {
 	fs := dvfs.NewMemFS()
 	var dbdir string
-	tf := func(t *testing.T, db *db) { dbdir = db.dirname }
+	tf := func(t *testing.T, db *db) {
+		t.Helper()
+		dbdir = db.dirname
+	}
 	runTanTest(t, nil, tf, fs)
 	manifestFn := "MANIFEST-1000"
 	logFn := "10001.log"

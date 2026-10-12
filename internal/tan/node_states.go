@@ -193,7 +193,7 @@ func (s *nodeStates) load(dirname string, fn fileNum, fs vfs.FS) (err error) {
 			}
 			if idx == 0 {
 				// just crossed index file boundary, we must merge here, consider
-				// consider existing index entries [{1 26 2 0} {27 27 3 47}], when
+				// existing index entries [{1 26 2 0} {27 27 3 47}], when
 				// {27 40 5 23} is loaded as the first index entry from a new index file,
 				// it needs to overwrite the {27 27 3 47} entry.
 				n.entries.update(e)

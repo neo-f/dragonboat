@@ -36,7 +36,8 @@ func TestSimDiskSMCanBeUpdatedAndQueried(t *testing.T) {
 	require.Equal(t, uint64(4), m.applied, "sm not updated")
 	v, err := m.Lookup(nil)
 	require.NoError(t, err, "lookup failed")
-	require.Equal(t, uint64(4), v.(uint64), "unexpected result")
+	r, _ := v.(uint64)
+	require.Equal(t, uint64(4), r, "unexpected result")
 }
 
 func TestSimDiskSnapshotWorks(t *testing.T) {
@@ -53,10 +54,12 @@ func TestSimDiskSnapshotWorks(t *testing.T) {
 	m2 := NewSimDiskSM(100)
 	v, err := m2.Lookup(nil)
 	require.NoError(t, err, "lookup failed")
-	require.Equal(t, uint64(100), v.(uint64), "unexpected result")
+	r, _ := v.(uint64)
+	require.Equal(t, uint64(100), r, "unexpected result")
 	err = m2.RecoverFromSnapshot(reader, nil)
 	require.NoError(t, err, "recover from snapshot failed")
 	v, err = m2.Lookup(nil)
 	require.NoError(t, err, "lookup failed")
-	require.Equal(t, uint64(4), v.(uint64), "unexpected result")
+	r, _ = v.(uint64)
+	require.Equal(t, uint64(4), r, "unexpected result")
 }

@@ -32,7 +32,7 @@ func TestCountedWriteCanReportTotalWritten(t *testing.T) {
 	}
 	total := uint64(0)
 	for range 16 {
-		sz := rand.Uint64() % 1024
+		sz := rand.Uint64() % 1024 //nolint:gosec // non-cryptographic use: test data size
 		v := make([]byte, sz)
 		total += sz
 		_, err := cw.Write(v)
@@ -45,10 +45,14 @@ type dummySM struct{}
 
 func (d *dummySM) Open(<-chan struct{}) (uint64, error)          { return 0, nil }
 func (d *dummySM) Update(entries []sm.Entry) ([]sm.Entry, error) { return nil, nil }
-func (d *dummySM) Lookup(query any) (any, error)                 { return nil, nil }
-func (d *dummySM) NALookup(query []byte) ([]byte, error)         { return nil, nil }
-func (d *dummySM) Sync() error                                   { return nil }
-func (d *dummySM) Prepare() (any, error)                         { return nil, nil }
+func (d *dummySM) Lookup(query any) (any, error) {
+	return nil, nil //nolint:nilnil // deliberate no-op test double
+}
+func (d *dummySM) NALookup(query []byte) ([]byte, error) { return nil, nil }
+func (d *dummySM) Sync() error                           { return nil }
+func (d *dummySM) Prepare() (any, error) {
+	return nil, nil //nolint:nilnil // deliberate no-op test double
+}
 func (d *dummySM) Save(any,
 	io.Writer, sm.ISnapshotFileCollection, <-chan struct{}) error {
 	return nil

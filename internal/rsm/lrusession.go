@@ -16,7 +16,7 @@ package rsm
 
 import (
 	"bytes"
-	"crypto/md5"
+	"crypto/md5" //nolint:gosec // used for data checksums, not security
 	"encoding/binary"
 	"io"
 	"sync"
@@ -71,7 +71,7 @@ func newLRUSession(size uint64) *lrusession {
 	}
 	rec.sessions.ShouldEvict = func(n int, k, v any) bool {
 		if uint64(n) > rec.size {
-			clientID := k.(*RaftClientID)
+			clientID, _ := k.(*RaftClientID)
 			plog.Warningf("session with client id %d evicted, overloaded", *clientID)
 			return true
 		}
@@ -95,7 +95,7 @@ func (rec *lrusession) save(writer io.Writer) error {
 	defer rec.Unlock()
 	idList := make([]RaftClientID, 0)
 	rec.sessions.OrderedDo(func(k, v any) {
-		key := k.(*RaftClientID)
+		key, _ := k.(*RaftClientID)
 		idList = append(idList, *key)
 	})
 	totalbuf := make([]byte, 8)
@@ -181,7 +181,8 @@ func (rec *lrusession) getSessionLocked(key RaftClientID) (*Session, bool) {
 	rec.searchKey = key
 	v, ok := rec.sessions.Get(&rec.searchKey)
 	if ok {
-		return v.(*Session), ok
+		s, _ := v.(*Session)
+		return s, ok
 	}
 	return nil, ok
 }
@@ -198,7 +199,7 @@ func (rec *lrusession) getHash() uint64 {
 		panic(err)
 	}
 	data := snapshot.Bytes()
-	hash := md5.New()
+	hash := md5.New() //nolint:gosec // used for data checksums, not security
 	fileutil.MustWrite(hash, data)
 	md5sum := hash.Sum(nil)
 	return binary.LittleEndian.Uint64(md5sum[:8])

@@ -76,11 +76,11 @@ func (q *entryQueue) gc() {
 	if q.lazyFreeCycle > 0 {
 		oldq := q.targetQueue()
 		if q.lazyFreeCycle == 1 {
-			for i := uint64(0); i < q.oldIdx; i++ {
+			for i := range q.oldIdx {
 				oldq[i].Cmd = nil
 			}
 		} else if q.cycle%q.lazyFreeCycle == 0 {
-			for i := uint64(0); i < q.size; i++ {
+			for i := range q.size {
 				oldq[i].Cmd = nil
 			}
 		}

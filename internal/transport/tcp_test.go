@@ -30,7 +30,7 @@ func TestRequstHeaderCanBeEncodedAndDecoded(t *testing.T) {
 	}
 	buf := make([]byte, requestHeaderSize)
 	result := r.encode(buf)
-	require.Equal(t, requestHeaderSize, len(result), "unexpected size")
+	require.Len(t, result, requestHeaderSize, "unexpected size")
 	rr := requestHeader{}
 	require.True(t, rr.decode(result), "decode failed")
 	require.True(t, reflect.DeepEqual(&r, &rr), "request header changed")
@@ -44,7 +44,7 @@ func TestRequestHeaderCRCIsChecked(t *testing.T) {
 	}
 	buf := make([]byte, requestHeaderSize)
 	result := r.encode(buf)
-	require.Equal(t, requestHeaderSize, len(result), "unexpected size")
+	require.Len(t, result, requestHeaderSize, "unexpected size")
 	rr := requestHeader{}
 	require.True(t, rr.decode(result), "decode failed")
 	crc := binary.BigEndian.Uint32(result[10:])
@@ -64,7 +64,7 @@ func TestInvalidMethodNameIsReported(t *testing.T) {
 	}
 	buf := make([]byte, requestHeaderSize)
 	result := r.encode(buf)
-	require.Equal(t, requestHeaderSize, len(result), "unexpected size")
+	require.Len(t, result, requestHeaderSize, "unexpected size")
 	rr := requestHeader{}
 	require.False(t, rr.decode(result), "decode did not report invalid method name")
 }

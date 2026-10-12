@@ -61,7 +61,8 @@ func getMemberNodes(r *rsm.StateMachine) []uint64 {
 	return n
 }
 
-func mustComplete(rs *RequestState, t *testing.T) {
+func mustComplete(t *testing.T, rs *RequestState) {
+	t.Helper()
 	select {
 	case v := <-rs.ResultC():
 		require.True(t, v.Completed(), "got %v, want %v", v.code, requestCompleted)
@@ -70,7 +71,8 @@ func mustComplete(rs *RequestState, t *testing.T) {
 	}
 }
 
-func mustReject(rs *RequestState, t *testing.T) {
+func mustReject(t *testing.T, rs *RequestState) {
+	t.Helper()
 	select {
 	case v := <-rs.ResultC():
 		assert.True(t, v.Rejected(), "got %v, want %d", v, requestRejected)
@@ -79,7 +81,8 @@ func mustReject(rs *RequestState, t *testing.T) {
 	}
 }
 
-func mustHasLeaderNode(nodes []*node, t *testing.T) *node {
+func mustHasLeaderNode(t *testing.T, nodes []*node) *node {
+	t.Helper()
 	for _, node := range nodes {
 		if node.isLeader() {
 			return node
@@ -110,6 +113,7 @@ func (r *testRouter) shouldDrop(msg pb.Message) bool {
 	if r.dropRate == 0 {
 		return false
 	}
+	//nolint:gosec // non-cryptographic use: simulated message drop in tests
 	if rand.Uint32()%100 < uint32(r.dropRate) {
 		return true
 	}
@@ -484,7 +488,8 @@ func makeCheckedTestProposal(t *testing.T, session *client.Session,
 	data []byte, timeoutInMillisecond uint64,
 	nodes []*node, smList []*rsm.StateMachine, router *testRouter,
 	expectedCode RequestResultCode, checkResult bool, expectedResult uint64) {
-	n := mustHasLeaderNode(nodes, t)
+	t.Helper()
+	n := mustHasLeaderNode(t, nodes)
 	tick := uint64(50)
 	rs, err := n.propose(session, data, tick)
 	require.NoError(t, err, "failed to make proposal")
@@ -504,6 +509,7 @@ func makeCheckedTestProposal(t *testing.T, session *client.Session,
 func runRaftNodeTest(t *testing.T, quiesce bool, ordered bool,
 	tf func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB), fs vfs.IFS) {
+	t.Helper()
 	defer leaktest.AfterTest(t)()
 	nodes, smList, router, ldb := getTestRaftNodes(t.TempDir(), 3, ordered, fs)
 	if quiesce {
@@ -528,6 +534,7 @@ func TestLastAppliedValueCanBeReturned(t *testing.T) {
 	fs := vfs.GetTestFS()
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		n := nodes[0]
 		sm := smList[0]
 		for i := uint64(5); i <= 100; i++ {
@@ -559,6 +566,7 @@ func TestLastAppliedValueIsAlwaysOneWayIncreasing(t *testing.T) {
 	fs := vfs.GetTestFS()
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		require.Panics(t, func() {
 			n := nodes[0]
 			sm := smList[0]
@@ -576,8 +584,9 @@ func TestLastAppliedValueIsAlwaysOneWayIncreasing(t *testing.T) {
 func TestProposalCanBeMadeWithMessageDrops(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		router.dropRate = 3
-		n := mustHasLeaderNode(nodes, t)
+		n := mustHasLeaderNode(t, nodes)
 		var ok bool
 		var session *client.Session
 		for range 3 {
@@ -603,6 +612,7 @@ func TestProposalCanBeMadeWithMessageDrops(t *testing.T) {
 func TestLeaderIDCanBeQueried(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		n := nodes[0]
 		v, _, ok := n.getLeaderID()
 		assert.True(t, ok, "failed to get leader id")
@@ -616,6 +626,7 @@ func TestLeaderIDCanBeQueried(t *testing.T) {
 func TestMembershipCanBeLocallyRead(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		n := nodes[0]
 		m := n.sm.GetMembership()
 		v := m.Addresses
@@ -640,6 +651,7 @@ func TestMembershipCanBeLocallyRead(t *testing.T) {
 func TestConfigChangeOnWitnessWillBeRejected(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		n := nodes[0]
 		n.config.IsWitness = true
 		_, err := n.requestConfigChange(pb.AddNode, 100, "noidea:9090", 0, 10)
@@ -652,6 +664,7 @@ func TestConfigChangeOnWitnessWillBeRejected(t *testing.T) {
 func TestReadOnWitnessWillBeRejected(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		n := nodes[0]
 		n.config.IsWitness = true
 		_, err := n.read(10)
@@ -664,6 +677,7 @@ func TestReadOnWitnessWillBeRejected(t *testing.T) {
 func TestMakingProposalOnWitnessNodeWillBeRejected(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		n := nodes[0]
 		n.config.IsWitness = true
 		cs := client.NewNoOPSession(n.shardID, random.NewLockedRand())
@@ -677,6 +691,7 @@ func TestMakingProposalOnWitnessNodeWillBeRejected(t *testing.T) {
 func TestProposingSessionOnWitnessNodeWillBeRejected(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		n := nodes[0]
 		n.config.IsWitness = true
 		_, err := n.proposeSession(nil, 10)
@@ -689,6 +704,7 @@ func TestProposingSessionOnWitnessNodeWillBeRejected(t *testing.T) {
 func TestRequestingSnapshotOnWitnessWillBeRejected(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		n := nodes[0]
 		n.config.IsWitness = true
 		_, err := n.requestSnapshot(SnapshotOption{}, 10)
@@ -701,6 +717,7 @@ func TestRequestingSnapshotOnWitnessWillBeRejected(t *testing.T) {
 func TestProposalWithClientSessionCanBeMade(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		n := nodes[0]
 		session, ok := getProposalTestClient(n, nodes, smList, router)
 		require.True(t, ok, "failed to get session")
@@ -720,6 +737,7 @@ func TestProposalWithClientSessionCanBeMade(t *testing.T) {
 func TestProposalWithNotRegisteredClientWillBeRejected(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		n := nodes[0]
 		session, ok := getProposalTestClient(n, nodes, smList, router)
 		require.True(t, ok, "failed to get session")
@@ -738,6 +756,7 @@ func TestProposalWithNotRegisteredClientWillBeRejected(t *testing.T) {
 func TestDuplicatedProposalReturnsTheSameResult(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		n := nodes[0]
 		session, ok := getProposalTestClient(n, nodes, smList, router)
 		require.True(t, ok, "failed to get session")
@@ -762,6 +781,7 @@ func TestDuplicatedProposalReturnsTheSameResult(t *testing.T) {
 func TestReproposeRespondedDataWillTimeout(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		n := nodes[0]
 		session, ok := getProposalTestClient(n, nodes, smList, router)
 		require.True(t, ok, "failed to get session")
@@ -801,6 +821,7 @@ func TestReproposeRespondedDataWillTimeout(t *testing.T) {
 func TestProposalsWithIllFormedSessionAreChecked(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		n := nodes[0]
 		s1 := client.NewSession(n.shardID, random.NewLockedRand())
 		s1.SeriesID = client.SeriesIDForRegister
@@ -831,6 +852,7 @@ func TestProposalsWithIllFormedSessionAreChecked(t *testing.T) {
 func TestProposalsWithCorruptedSessionWillPanic(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		n := nodes[0]
 		s1 := client.NewSession(n.shardID, random.NewLockedRand())
 		s1.SeriesID = 100
@@ -872,6 +894,7 @@ func TestRaftNodeQuiesceCanBeDisabled(t *testing.T) {
 func TestNodesCanEnterQuiesce(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		// need to step more than quiesce.threshold() as the startup
 		// config change messages are going to be recorded as activities
 		for i := uint64(0); i <= nodes[0].qs.threshold()*2; i++ {
@@ -895,6 +918,7 @@ func TestNodesCanEnterQuiesce(t *testing.T) {
 func TestNodesCanExitQuiesceByMakingProposal(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		// need to step more than quiesce.threshold() as the startup
 		// config change messages are going to be recorded as activities
 		for i := uint64(0); i <= nodes[0].qs.threshold()*2; i++ {
@@ -913,7 +937,7 @@ func TestNodesCanExitQuiesceByMakingProposal(t *testing.T) {
 			}
 		}
 		assert.True(t, done, "failed to get proposal client -- didn't exit from quiesce?")
-		for i := uint64(0); i <= 3; i++ {
+		for range uint64(4) {
 			singleStepNodes(nodes, smList, router)
 		}
 		for _, node := range nodes {
@@ -927,6 +951,7 @@ func TestNodesCanExitQuiesceByMakingProposal(t *testing.T) {
 func TestNodesCanExitQuiesceByReadIndex(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		// need to step more than quiesce.threshold() as the startup
 		// config change messages are going to be recorded as activities
 		for i := uint64(0); i <= nodes[0].qs.threshold()*2; i++ {
@@ -940,7 +965,7 @@ func TestNodesCanExitQuiesceByReadIndex(t *testing.T) {
 		require.NoError(t, err, "failed to read")
 
 		var done bool
-		for i := uint64(0); i <= 5; i++ {
+		for range uint64(6) {
 			singleStepNodes(nodes, smList, router)
 			select {
 			case <-rs.ResultC():
@@ -962,6 +987,7 @@ func TestNodesCanExitQuiesceByReadIndex(t *testing.T) {
 func TestNodesCanExitQuiesceByConfigChange(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		// need to step more than quiesce.threshold() as the startup
 		// config change messages are going to be recorded as activities
 		for i := uint64(0); i <= nodes[0].qs.threshold()*2; i++ {
@@ -1010,6 +1036,7 @@ func TestNodesCanExitQuiesceByConfigChange(t *testing.T) {
 func TestLinearizableReadCanBeMade(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		n := nodes[0]
 		session, ok := getProposalTestClient(n, nodes, smList, router)
 		require.True(t, ok, "failed to get session")
@@ -1017,7 +1044,7 @@ func TestLinearizableReadCanBeMade(t *testing.T) {
 		rs, err := n.propose(session, []byte("test-data"), 10)
 		require.NoError(t, err, "failed to make proposal")
 		stepNodes(nodes, smList, router, 10)
-		mustComplete(rs, t)
+		mustComplete(t, rs)
 		closeProposalTestClient(n, nodes, smList, router, session)
 
 		rs, err = n.read(10)
@@ -1025,21 +1052,23 @@ func TestLinearizableReadCanBeMade(t *testing.T) {
 		require.NotNil(t, rs.node, "rs.node not set")
 
 		stepNodes(nodes, smList, router, 10)
-		mustComplete(rs, t)
+		mustComplete(t, rs)
 	}
 	fs := vfs.GetTestFS()
 	runRaftNodeTest(t, false, false, tf, fs)
 }
 
 func testNodeCanBeAdded(t *testing.T, fs vfs.IFS) {
+	t.Helper()
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		router.dropRate = 3
-		n := mustHasLeaderNode(nodes, t)
+		n := mustHasLeaderNode(t, nodes)
 		rs, err := n.requestAddNodeWithOrderID(4, "a4:4", 0, 10)
 		require.NoError(t, err, "request to delete node failed")
 		stepNodes(nodes, smList, router, 10)
-		mustComplete(rs, t)
+		mustComplete(t, rs)
 		for _, node := range nodes {
 			assert.True(t, sliceEqual([]uint64{1, 2, 3, 4}, getMemberNodes(node.sm)),
 				"failed to delete the node, %v", getMemberNodes(node.sm))
@@ -1059,11 +1088,12 @@ func TestNodeCanBeAddedWithMessageDrops(t *testing.T) {
 func TestNodeCanBeDeleted(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		n := nodes[0]
 		rs, err := n.requestDeleteNodeWithOrderID(2, 0, 10)
 		require.NoError(t, err, "request to delete node failed")
 		stepNodes(nodes, smList, router, 10)
-		mustComplete(rs, t)
+		mustComplete(t, rs)
 		assert.False(t, nodes[0].stopped(), "node id 1 is not suppose to be in stopped state")
 		assert.True(t, nodes[1].stopped(), "node is not stopped")
 		assert.False(t, nodes[2].stopped(), "node id 3 is not suppose to be in stopped state")
@@ -1089,6 +1119,7 @@ func sliceEqual(s1 []uint64, s2 []uint64) bool {
 func TestNodeCanBeAdded2(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		fs := vfs.GetTestFS()
 		n := nodes[0]
 		session, ok := getProposalTestClient(n, nodes, smList, router)
@@ -1098,7 +1129,7 @@ func TestNodeCanBeAdded2(t *testing.T) {
 			rs, err := n.propose(session, []byte("test-data"), 10)
 			require.NoError(t, err)
 			stepNodes(nodes, smList, router, 10)
-			mustComplete(rs, t)
+			mustComplete(t, rs)
 			session.ProposalCompleted()
 		}
 		closeProposalTestClient(n, nodes, smList, router, session)
@@ -1106,7 +1137,7 @@ func TestNodeCanBeAdded2(t *testing.T) {
 		rs, err := n.requestAddNodeWithOrderID(4, "a4:4", 0, 10)
 		require.NoError(t, err, "request to add node failed")
 		stepNodes(nodes, smList, router, 10)
-		mustComplete(rs, t)
+		mustComplete(t, rs)
 		for _, node := range nodes {
 			assert.False(t, node.stopped(), "node %d is stopped, this is unexpected", node.replicaID)
 			assert.True(t, sliceEqual([]uint64{1, 2, 3, 4}, getMemberNodes(node.sm)), "node members not expected: %v", getMemberNodes(node.sm))
@@ -1130,11 +1161,12 @@ func TestNodeCanBeAddedWhenOrderIsEnforced(t *testing.T) {
 	fs := vfs.GetTestFS()
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		n := nodes[0]
 		rs, err := n.requestAddNodeWithOrderID(5, "a5:5", 0, 10)
 		require.NoError(t, err, "request to add node failed")
 		stepNodes(nodes, smList, router, 10)
-		mustReject(rs, t)
+		mustReject(t, rs)
 		for _, node := range nodes {
 			assert.False(t, node.stopped(), "node %d is stopped, this is unexpected", node.replicaID)
 			assert.True(t, sliceEqual([]uint64{1, 2, 3}, getMemberNodes(node.sm)), "node members not expected: %v", getMemberNodes(node.sm))
@@ -1145,7 +1177,7 @@ func TestNodeCanBeAddedWhenOrderIsEnforced(t *testing.T) {
 		rs, err = n.requestAddNodeWithOrderID(5, "a5:5", ccid, 10)
 		require.NoError(t, err, "request to add node failed")
 		stepNodes(nodes, smList, router, 10)
-		mustComplete(rs, t)
+		mustComplete(t, rs)
 		for _, node := range nodes {
 			assert.False(t, node.stopped(), "node %d is stopped, this is unexpected", node.replicaID)
 			assert.True(t, sliceEqual([]uint64{1, 2, 3, 5}, getMemberNodes(node.sm)), "node members not expected: %v", getMemberNodes(node.sm))
@@ -1158,11 +1190,12 @@ func TestNodeCanBeDeletedWhenOrderIsEnforced(t *testing.T) {
 	fs := vfs.GetTestFS()
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		n := nodes[0]
 		rs, err := n.requestDeleteNodeWithOrderID(2, 0, 10)
 		require.NoError(t, err, "request to delete node failed")
 		stepNodes(nodes, smList, router, 10)
-		mustReject(rs, t)
+		mustReject(t, rs)
 		for _, node := range nodes {
 			assert.False(t, node.stopped(), "node %d is stopped, this is unexpected", node.replicaID)
 			assert.True(t, sliceEqual([]uint64{1, 2, 3}, getMemberNodes(node.sm)), "node members not expected: %v", getMemberNodes(node.sm))
@@ -1172,7 +1205,7 @@ func TestNodeCanBeDeletedWhenOrderIsEnforced(t *testing.T) {
 		rs, err = n.requestDeleteNodeWithOrderID(2, ccid, 10)
 		require.NoError(t, err, "request to add node failed")
 		stepNodes(nodes, smList, router, 10)
-		mustComplete(rs, t)
+		mustComplete(t, rs)
 		for _, node := range nodes {
 			if node.replicaID == 2 {
 				continue
@@ -1208,6 +1241,7 @@ func TestSnapshotCanBeMade(t *testing.T) {
 	fs := vfs.GetTestFS()
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		n := nodes[0]
 		session, ok := getProposalTestClient(n, nodes, smList, router)
 		require.True(t, ok, "failed to get session")
@@ -1219,7 +1253,7 @@ func TestSnapshotCanBeMade(t *testing.T) {
 			rs, err := n.propose(session, []byte(data), 10)
 			require.NoError(t, err, "failed to make proposal")
 			stepNodes(nodes, smList, router, 10)
-			mustComplete(rs, t)
+			mustComplete(t, rs)
 			session.ProposalCompleted()
 		}
 		assert.Equal(t, maxLastApplied+uint64(proposalCount), getMaxLastApplied(smList), "not all %d proposals applied", proposalCount)
@@ -1238,6 +1272,7 @@ func TestSnapshotCanBeMade(t *testing.T) {
 func TestSnapshotCanBeMadeTwice(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		t.Helper()
 		n := nodes[0]
 		session, ok := getProposalTestClient(n, nodes, smList, router)
 		require.True(t, ok, "failed to get session")
@@ -1249,7 +1284,7 @@ func TestSnapshotCanBeMadeTwice(t *testing.T) {
 			rs, err := n.propose(session, []byte(data), 10)
 			require.NoError(t, err, "failed to make proposal")
 			stepNodes(nodes, smList, router, 10)
-			mustComplete(rs, t)
+			mustComplete(t, rs)
 			session.ProposalCompleted()
 		}
 		assert.Equal(t, maxLastApplied+uint64(proposalCount), getMaxLastApplied(smList), "not all %d proposals applied", proposalCount)
@@ -1272,7 +1307,7 @@ func TestNodesCanBeRestarted(t *testing.T) {
 	require.Len(t, nodes, 3, "failed to get 3 nodes")
 
 	stepNodesUntilThereIsLeader(nodes, smList, router)
-	n := mustHasLeaderNode(nodes, t)
+	n := mustHasLeaderNode(t, nodes)
 	session, ok := getProposalTestClient(n, nodes, smList, router)
 	require.True(t, ok, "failed to get session")
 
@@ -1281,7 +1316,7 @@ func TestNodesCanBeRestarted(t *testing.T) {
 		rs, err := n.propose(session, []byte("test-data"), 10)
 		require.NoError(t, err)
 		stepNodes(nodes, smList, router, 10)
-		mustComplete(rs, t)
+		mustComplete(t, rs)
 		session.ProposalCompleted()
 	}
 	assert.Equal(t, maxLastApplied+25, getMaxLastApplied(smList), "not all 25 proposals applied")
@@ -1477,32 +1512,30 @@ func (np *testDummyNodeProxy) ReplicaID() uint64                                
 func (np *testDummyNodeProxy) ShardID() uint64                                       { return 1 }
 func (np *testDummyNodeProxy) ShouldStop() <-chan struct{}                           { return nil }
 
-func TestNotReadyTakingSnapshotNodeIsSkippedWhenConcurrencyIsNotSupported(t *testing.T) {
+func testNotReadyTakingSnapshotSaveStatus(t *testing.T,
+	ism rsm.IStateMachine, concurrent bool, skipped bool) {
+	t.Helper()
 	fs := vfs.GetTestFS()
 	n := &node{ss: snapshotState{}, initializedC: make(chan struct{})}
 	config := config.Config{ShardID: 1, ReplicaID: 1}
 	n.sm = rsm.NewStateMachine(
-		rsm.NewNativeSM(config, &rsm.InMemStateMachine{}, nil),
+		rsm.NewNativeSM(config, ism, nil),
 		nil, config, &testDummyNodeProxy{}, fs)
 
-	assert.False(t, n.concurrentSnapshot(), "concurrency not suppose to be supported")
+	assert.Equal(t, concurrent, n.concurrentSnapshot(),
+		"unexpected concurrentSnapshot result")
 	n.ss.setSaving()
 	n.setInitialized()
-	require.True(t, n.processSaveStatus(), "node not skipped")
+	assert.Equal(t, skipped, n.processSaveStatus(),
+		"unexpected processSaveStatus result")
+}
+
+func TestNotReadyTakingSnapshotNodeIsSkippedWhenConcurrencyIsNotSupported(t *testing.T) {
+	testNotReadyTakingSnapshotSaveStatus(t, &rsm.InMemStateMachine{}, false, true)
 }
 
 func TestNotReadyTakingSnapshotConcurrentNodeIsNotSkipped(t *testing.T) {
-	fs := vfs.GetTestFS()
-	n := &node{ss: snapshotState{}, initializedC: make(chan struct{})}
-	config := config.Config{ShardID: 1, ReplicaID: 1}
-	n.sm = rsm.NewStateMachine(
-		rsm.NewNativeSM(config, &rsm.ConcurrentStateMachine{}, nil),
-		nil, config, &testDummyNodeProxy{}, fs)
-
-	assert.True(t, n.concurrentSnapshot(), "concurrency not supported")
-	n.ss.setSaving()
-	n.setInitialized()
-	assert.False(t, n.processSaveStatus(), "node unexpectedly skipped")
+	testNotReadyTakingSnapshotSaveStatus(t, &rsm.ConcurrentStateMachine{}, true, false)
 }
 
 func TestIsWitnessNode(t *testing.T) {

@@ -63,7 +63,7 @@ func (wb *testWriteBatch) Count() int {
 func TestRDBContextCanBeCreated(t *testing.T) {
 	ctx := newContext(128, 128)
 	require.NotNil(t, ctx.key, "key should not be nil")
-	require.Equal(t, 128, len(ctx.val), "val should have length 128")
+	require.Len(t, ctx.val, 128, "val should have length 128")
 	require.Nil(t, ctx.wb, "wb should be nil")
 }
 

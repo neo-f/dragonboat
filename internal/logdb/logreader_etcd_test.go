@@ -36,6 +36,7 @@ const (
 
 func getNewLogReaderTestDB(t *testing.T,
 	entries []pb.Entry, fs vfs.IFS) raftio.ILogDB {
+	t.Helper()
 	logdb := getNewTestDB(t.TempDir(), "db-dir", "wal-db-dir", false, fs)
 	ud := pb.Update{
 		EntriesToSave: entries,
@@ -49,6 +50,7 @@ func getNewLogReaderTestDB(t *testing.T,
 }
 
 func getTestLogReader(t *testing.T, entries []pb.Entry, fs vfs.IFS) *LogReader {
+	t.Helper()
 	logdb := getNewLogReaderTestDB(t, entries, fs)
 	ls := NewLogReader(LogReaderTestShardID, LogReaderTestReplicaID, logdb)
 	ls.SetCompactor(testCompactor)
@@ -65,6 +67,7 @@ func TestLogReaderEntries(t *testing.T) {
 }
 
 func testLogReaderEntries(t *testing.T, fs vfs.IFS) {
+	t.Helper()
 	ents := []pb.Entry{
 		{Index: 3, Term: 3}, {Index: 4, Term: 4},
 		{Index: 5, Term: 5}, {Index: 6, Term: 6},
@@ -117,6 +120,7 @@ func TestLogReaderTerm(t *testing.T) {
 }
 
 func testLogReaderTerm(t *testing.T, fs vfs.IFS) {
+	t.Helper()
 	ents := []pb.Entry{
 		{Index: 3, Term: 3}, {Index: 4, Term: 4}, {Index: 5, Term: 5},
 	}
@@ -157,6 +161,7 @@ func TestLogReaderLastIndex(t *testing.T) {
 }
 
 func testLogReaderLastIndex(t *testing.T, fs vfs.IFS) {
+	t.Helper()
 	ents := []pb.Entry{
 		{Index: 3, Term: 3}, {Index: 4, Term: 4}, {Index: 5, Term: 5},
 	}
@@ -176,6 +181,7 @@ func TestLogReaderFirstIndex(t *testing.T) {
 }
 
 func testLogReaderFirstIndex(t *testing.T, fs vfs.IFS) {
+	t.Helper()
 	ents := []pb.Entry{
 		{Index: 3, Term: 3}, {Index: 4, Term: 4}, {Index: 5, Term: 5},
 	}
@@ -199,6 +205,7 @@ func TestLogReaderAppend(t *testing.T) {
 }
 
 func testLogReaderAppend(t *testing.T, fs vfs.IFS) {
+	t.Helper()
 	ents := []pb.Entry{
 		{Index: 3, Term: 3}, {Index: 4, Term: 4}, {Index: 5, Term: 5},
 	}
@@ -303,7 +310,7 @@ func TestLogReaderApplySnapshot(t *testing.T) {
 		{Index: 3, Term: 3, Membership: *cs},
 	}
 	s := getTestLogReader(t, ents, fs)
-	//Apply Snapshot successful
+	// Apply Snapshot successful
 	i := 0
 	tt := tests[i]
 	err := s.ApplySnapshot(tt)
@@ -312,7 +319,7 @@ func TestLogReaderApplySnapshot(t *testing.T) {
 	require.Equal(t, uint64(5), fi, "first index mismatch")
 	_, li := s.GetRange()
 	require.Equal(t, uint64(4), li, "last index mismatch")
-	//Apply Snapshot fails due to ErrSnapOutOfDate
+	// Apply Snapshot fails due to ErrSnapOutOfDate
 	i = 1
 	tt = tests[i]
 	err = s.ApplySnapshot(tt)

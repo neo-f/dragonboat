@@ -66,7 +66,7 @@ func TestFollowerStateCanBeSet(t *testing.T) {
 	r.Tick()
 	r.SetFollowerState(101, 4)
 	r.SetFollowerState(102, 200)
-	require.Equal(t, 3, len(r.followerSizes), "not all state recorded")
+	require.Len(t, r.followerSizes, 3, "not all state recorded")
 	tests := []struct {
 		replicaID uint64
 		v         uint64
@@ -93,19 +93,19 @@ func TestGCRemoveOutOfDateFollowerState(t *testing.T) {
 	r.SetFollowerState(102, 2)
 	r.SetFollowerState(103, 3)
 	r.gc()
-	require.Equal(t, 3, len(r.followerSizes),
+	require.Len(t, r.followerSizes, 3,
 		"count %d, want 3", len(r.followerSizes))
 	for range gcTick {
 		r.Tick()
 	}
 	r.gc()
-	require.Equal(t, 2, len(r.followerSizes),
+	require.Len(t, r.followerSizes, 2,
 		"count %d, want 2", len(r.followerSizes))
 	_, ok := r.followerSizes[101]
 	require.False(t, ok, "old follower state not removed")
 	r.Tick()
 	r.gc()
-	require.Equal(t, 0, len(r.followerSizes),
+	require.Empty(t, r.followerSizes,
 		"count %d, want 0", len(r.followerSizes))
 }
 
@@ -137,7 +137,7 @@ func TestRateNotLimitedWhenOutOfDateFollowerStateIsLimited(t *testing.T) {
 	r.Tick()
 	r.Tick()
 	require.False(t, r.RateLimited(), "unexpectedly rate limited")
-	require.Equal(t, 0, len(r.followerSizes),
+	require.Empty(t, r.followerSizes,
 		"out of date follower state not GCed")
 }
 

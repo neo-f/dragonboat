@@ -67,8 +67,9 @@ func TestInMemGetSnapshotIndex(t *testing.T) {
 	}
 }
 
-func testGetEntriesPanicWithInvalidInput(low uint64,
-	high uint64, marker uint64, firstIndex uint64, length uint64, t *testing.T) {
+func testGetEntriesPanicWithInvalidInput(t *testing.T, low uint64,
+	high uint64, marker uint64, firstIndex uint64, length uint64) {
+	t.Helper()
 	defer func() {
 		if r := recover(); r != nil {
 			return
@@ -98,8 +99,8 @@ func TestInMemGetEntriesPanicWithInvalidInput(t *testing.T) {
 		{10, 11, 5, 5, 5},    // high > upperBound
 	}
 	for _, tt := range tests {
-		testGetEntriesPanicWithInvalidInput(tt.low,
-			tt.high, tt.marker, tt.firstIndex, tt.length, t)
+		testGetEntriesPanicWithInvalidInput(t, tt.low,
+			tt.high, tt.marker, tt.firstIndex, tt.length)
 	}
 }
 
@@ -259,6 +260,7 @@ func TestInMemSaveSnapshotTo(t *testing.T) {
 }
 
 func testInMemMergeFullAppend(t *testing.T, shrunk bool) {
+	t.Helper()
 	im := inMemory{
 		markerIndex: 5,
 	}

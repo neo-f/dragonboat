@@ -84,10 +84,14 @@ func (m *metaStore) put(name string, md meta) {
 
 func (m *metaStore) get(name string) (meta, bool) {
 	v, ok := m.nodes.Load(name)
-	if ok {
-		return v.(meta), true
+	if !ok {
+		return meta{}, false
 	}
-	return meta{}, false
+	md, ok := v.(meta)
+	if !ok {
+		return meta{}, false
+	}
+	return md, true
 }
 
 func (m *metaStore) delete(name string) {

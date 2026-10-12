@@ -11,9 +11,10 @@ import (
 	"strings"
 	"testing"
 
+	"math/rand/v2"
+
 	"github.com/cockroachdb/errors"
 	"github.com/stretchr/testify/require"
-	"math/rand/v2"
 )
 
 func short(s string) string {
@@ -39,6 +40,7 @@ func testGeneratorWriter(
 	gen func() (string, bool),
 	newWriter func(io.Writer) recordWriter,
 ) {
+	t.Helper()
 	buf := new(bytes.Buffer)
 
 	reset()
@@ -80,6 +82,7 @@ func testGeneratorWriter(
 }
 
 func testGenerator(t *testing.T, reset func(), gen func() (string, bool)) {
+	t.Helper()
 	t.Run("Writer", func(t *testing.T) {
 		testGeneratorWriter(t, reset, gen, func(w io.Writer) recordWriter {
 			return newWriter(w)
@@ -88,6 +91,7 @@ func testGenerator(t *testing.T, reset func(), gen func() (string, bool)) {
 }
 
 func testLiterals(t *testing.T, s []string) {
+	t.Helper()
 	var i int
 	reset := func() {
 		i = 0
@@ -125,7 +129,7 @@ func TestRandom(t *testing.T) {
 		r *rand.Rand
 	)
 	reset := func() {
-		i, r = 0, rand.New(rand.NewPCG(0, 0))
+		i, r = 0, rand.New(rand.NewPCG(0, 0)) //nolint:gosec // non-cryptographic use: deterministic test generator
 	}
 	gen := func() (string, bool) {
 		if i == n {
@@ -226,7 +230,7 @@ func TestNonExhaustiveRead(t *testing.T) {
 	const n = 100
 	buf := new(bytes.Buffer)
 	p := make([]byte, 10)
-	rnd := rand.New(rand.NewPCG(1, 0))
+	rnd := rand.New(rand.NewPCG(1, 0)) //nolint:gosec // non-cryptographic use: deterministic test data
 
 	w := newWriter(buf)
 	for i := range n {
@@ -412,7 +416,7 @@ func TestBasicRecover(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected an error while reading a corrupted record")
 	}
-	if err != ErrCRCMismatch {
+	if !errors.Is(err, ErrCRCMismatch) {
 		t.Fatalf("Unexpected error returned: %v", err)
 	}
 
@@ -469,7 +473,7 @@ func TestRecoverSingleBlock(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected a checksum mismatch error, got nil")
 	}
-	if err != ErrCRCMismatch {
+	if !errors.Is(err, ErrCRCMismatch) {
 		t.Fatalf("Unexpected error returned: %v", err)
 	}
 
@@ -527,7 +531,7 @@ func TestRecoverMultipleBlocks(t *testing.T) {
 	if err == nil {
 		t.Fatal("Exptected a checksum mismatch error, got nil")
 	}
-	if err != ErrCRCMismatch {
+	if !errors.Is(err, ErrCRCMismatch) {
 		t.Fatalf("Unexpected error returned: %v", err)
 	}
 
@@ -555,7 +559,7 @@ func TestRecoverMultipleBlocks(t *testing.T) {
 func verifyLastBlockRecover(recs *testRecords) error {
 	r := newReader(bytes.NewReader(recs.buf), 0 /* logNum */)
 	// Loop to one element larger than the number of records to verify EOF.
-	for i := 0; i < len(recs.records)+1; i++ {
+	for i := range len(recs.records) + 1 {
 		_, err := r.next()
 		switch i {
 		case len(recs.records) - 1:
@@ -728,7 +732,7 @@ func TestSeekRecord(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Seek past the end of a file didn't cause an error")
 	}
-	if err != io.ErrUnexpectedEOF {
+	if !errors.Is(err, io.ErrUnexpectedEOF) {
 		t.Fatalf("Seeking past EOF raised unexpected error: %v", err)
 	}
 	r.recover() // Verify recovery works.
@@ -773,13 +777,13 @@ func TestNoLastRecordOffset(t *testing.T) {
 		require.NoError(t, w.close())
 	}()
 
-	if _, err := w.lastRecordOffset(); err != ErrNoLastRecord {
+	if _, err := w.lastRecordOffset(); !errors.Is(err, ErrNoLastRecord) {
 		t.Fatalf("Expected ErrNoLastRecord, got: %v", err)
 	}
 
 	require.NoError(t, w.flush())
 
-	if _, err := w.lastRecordOffset(); err != ErrNoLastRecord {
+	if _, err := w.lastRecordOffset(); !errors.Is(err, ErrNoLastRecord) {
 		t.Fatalf("LastRecordOffset: got: %v, want ErrNoLastRecord", err)
 	}
 
@@ -798,7 +802,7 @@ func TestSize(t *testing.T) {
 	zeroes := make([]byte, 8<<10)
 	w := newWriter(&buf)
 	for range 100 {
-		n := rand.IntN(len(zeroes))
+		n := rand.IntN(len(zeroes)) //nolint:gosec // non-cryptographic use: test data size
 		_, err := w.writeRecord(zeroes[:n])
 		require.NoError(t, err)
 		require.NoError(t, w.flush())

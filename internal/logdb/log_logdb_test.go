@@ -28,6 +28,7 @@ import (
 )
 
 func getTestLogReaderWithoutCache(t *testing.T, entries []pb.Entry) *LogReader {
+	t.Helper()
 	logdb := getNewLogReaderTestDB(t, entries, vfs.GetTestFS())
 	ls := NewLogReader(LogReaderTestShardID, LogReaderTestReplicaID, logdb)
 	ls.SetCompactor(testCompactor)
@@ -71,7 +72,8 @@ func TestRLLTFindConflict(t *testing.T) {
 	}
 	stable := getTestLogReaderWithoutCache(t, previousEnts)
 	defer func() {
-		require.NoError(t, stable.logdb.(*ShardedDB).Close())
+		sdb, _ := stable.logdb.(*ShardedDB)
+		require.NoError(t, sdb.Close())
 	}()
 	for i, tt := range tests {
 		raftLog := raft.NewLog(stable)
@@ -87,7 +89,8 @@ func TestRLLTIsUpToDate(t *testing.T) {
 		{Index: 3, Term: 3}}
 	stable := getTestLogReaderWithoutCache(t, previousEnts)
 	defer func() {
-		require.NoError(t, stable.logdb.(*ShardedDB).Close())
+		sdb, _ := stable.logdb.(*ShardedDB)
+		require.NoError(t, sdb.Close())
 	}()
 	raftLog := raft.NewLog(stable)
 	tests := []struct {
@@ -170,7 +173,8 @@ func TestRLLTAppend(t *testing.T) {
 		if goff := raftLog.UnstableOffset(); goff != tt.wunstable {
 			t.Errorf("#%d: unstable = %d, want %d", i, goff, tt.wunstable)
 		}
-		require.NoError(t, stable.logdb.(*ShardedDB).Close())
+		sdb, _ := stable.logdb.(*ShardedDB)
+		require.NoError(t, sdb.Close())
 	}
 }
 
@@ -256,7 +260,7 @@ func TestRLLTLogMaybeAppend(t *testing.T) {
 				{Index: lastindex + 2, Term: 4}},
 			lastindex + 2, true, lastindex + 2, false,
 		},
-		// match with the the entry in the middle
+		// match with the entry in the middle
 		{
 			lastterm - 1, lastindex - 1, lastindex,
 			[]pb.Entry{{Index: lastindex, Term: 4}},
@@ -285,53 +289,35 @@ func TestRLLTLogMaybeAppend(t *testing.T) {
 		raftLog := raft.NewLog(stable)
 		raftLog.SetCommitted(commit)
 
+		check := func() {
+			glasti, gappend, err := raftLog.TryAppend(tt.index, tt.logTerm,
+				tt.committed, tt.ents)
+			require.NoError(t, err)
+			gcommit := raftLog.GetCommitted()
+
+			require.Equal(t, tt.wlasti, glasti,
+				"#%d: lastindex = %d, want %d", i, glasti, tt.wlasti)
+			require.Equal(t, tt.wappend, gappend,
+				"#%d: append = %v, want %v", i, gappend, tt.wappend)
+			require.Equal(t, tt.wcommit, gcommit,
+				"#%d: committed = %d, want %d", i, gcommit, tt.wcommit)
+			if gappend && len(tt.ents) != 0 {
+				gents, err := raftLog.GetEntries(
+					raftLog.LastIndex()-uint64(len(tt.ents))+1,
+					raftLog.LastIndex()+1, math.MaxUint64)
+				require.NoError(t, err)
+				require.Equal(t, tt.ents, gents,
+					"%d: appended entries = %v, want %v", i, gents, tt.ents)
+			}
+		}
 		if tt.wpanic {
-			require.Panics(t, func() {
-				glasti, gappend, err := raftLog.TryAppend(tt.index, tt.logTerm,
-					tt.committed, tt.ents)
-				require.NoError(t, err)
-				gcommit := raftLog.GetCommitted()
-
-				require.Equal(t, tt.wlasti, glasti,
-					"#%d: lastindex = %d, want %d", i, glasti, tt.wlasti)
-				require.Equal(t, tt.wappend, gappend,
-					"#%d: append = %v, want %v", i, gappend, tt.wappend)
-				require.Equal(t, tt.wcommit, gcommit,
-					"#%d: committed = %d, want %d", i, gcommit, tt.wcommit)
-				if gappend && len(tt.ents) != 0 {
-					gents, err := raftLog.GetEntries(
-						raftLog.LastIndex()-uint64(len(tt.ents))+1,
-						raftLog.LastIndex()+1, math.MaxUint64)
-					require.NoError(t, err)
-					require.Equal(t, tt.ents, gents,
-						"%d: appended entries = %v, want %v", i, gents, tt.ents)
-				}
-			})
+			require.Panics(t, check)
 		} else {
-			require.NotPanics(t, func() {
-				glasti, gappend, err := raftLog.TryAppend(tt.index, tt.logTerm,
-					tt.committed, tt.ents)
-				require.NoError(t, err)
-				gcommit := raftLog.GetCommitted()
-
-				require.Equal(t, tt.wlasti, glasti,
-					"#%d: lastindex = %d, want %d", i, glasti, tt.wlasti)
-				require.Equal(t, tt.wappend, gappend,
-					"#%d: append = %v, want %v", i, gappend, tt.wappend)
-				require.Equal(t, tt.wcommit, gcommit,
-					"#%d: committed = %d, want %d", i, gcommit, tt.wcommit)
-				if gappend && len(tt.ents) != 0 {
-					gents, err := raftLog.GetEntries(
-						raftLog.LastIndex()-uint64(len(tt.ents))+1,
-						raftLog.LastIndex()+1, math.MaxUint64)
-					require.NoError(t, err)
-					require.Equal(t, tt.ents, gents,
-						"%d: appended entries = %v, want %v", i, gents, tt.ents)
-				}
-			})
+			require.NotPanics(t, check)
 		}
 
-		require.NoError(t, stable.logdb.(*ShardedDB).Close())
+		sdb, _ := stable.logdb.(*ShardedDB)
+		require.NoError(t, sdb.Close())
 	}
 }
 
@@ -439,7 +425,8 @@ func TestRLLTHasNextEnts(t *testing.T) {
 		require.Equal(t, tt.hasNext, hasNext,
 			"#%d: hasNext = %v, want %v", i, hasNext, tt.hasNext)
 
-		require.NoError(t, stable.logdb.(*ShardedDB).Close())
+		sdb, _ := stable.logdb.(*ShardedDB)
+		require.NoError(t, sdb.Close())
 	}
 }
 
@@ -475,7 +462,8 @@ func TestRLLTNextEnts(t *testing.T) {
 		require.Equal(t, tt.wents, nents,
 			"#%d: nents = %+v, want %+v", i, nents, tt.wents)
 
-		require.NoError(t, stable.logdb.(*ShardedDB).Close())
+		sdb, _ := stable.logdb.(*ShardedDB)
+		require.NoError(t, sdb.Close())
 	}
 }
 
@@ -516,7 +504,7 @@ func TestRLLTCompaction(t *testing.T) {
 			}
 			raftLog.AppliedTo(raftLog.GetCommitted())
 
-			for j := 0; j < len(tt.compact); j++ {
+			for j := range len(tt.compact) {
 				err := stable.Compact(tt.compact[j])
 				if err != nil {
 					if tt.wallow {
@@ -529,7 +517,8 @@ func TestRLLTCompaction(t *testing.T) {
 				}
 			}
 		}()
-		require.NoError(t, stable.logdb.(*ShardedDB).Close())
+		sdb, _ := stable.logdb.(*ShardedDB)
+		require.NoError(t, sdb.Close())
 	}
 }
 
@@ -540,7 +529,7 @@ func TestRLLTLogRestore(t *testing.T) {
 	require.NoError(t, stable.ApplySnapshot(pb.Snapshot{Index: index, Term: term}))
 	raftLog := raft.NewLog(stable)
 
-	require.Equal(t, 0, len(raftLog.AllEntries()),
+	require.Empty(t, raftLog.AllEntries(),
 		"len = %d, want 0", len(raftLog.AllEntries()))
 	require.Equal(t, index+1, raftLog.FirstIndex(),
 		"firstIndex = %d, want %d", raftLog.FirstIndex(), index+1)
@@ -551,7 +540,8 @@ func TestRLLTLogRestore(t *testing.T) {
 	require.Equal(t, term, mustTerm(raftLog.Term(index)),
 		"term = %d, want %d", mustTerm(raftLog.Term(index)), term)
 
-	require.NoError(t, stable.logdb.(*ShardedDB).Close())
+	sdb, _ := stable.logdb.(*ShardedDB)
+	require.NoError(t, sdb.Close())
 }
 
 func TestRLLTIsOutOfBounds(t *testing.T) {
@@ -633,7 +623,8 @@ func TestRLLTIsOutOfBounds(t *testing.T) {
 		}
 	}
 
-	require.NoError(t, stable.logdb.(*ShardedDB).Close())
+	sdb, _ := stable.logdb.(*ShardedDB)
+	require.NoError(t, sdb.Close())
 }
 
 func TestRLLTTerm(t *testing.T) {
@@ -664,7 +655,8 @@ func TestRLLTTerm(t *testing.T) {
 		require.Equal(t, tt.w, term, "#%d: at = %d, want %d", j, term, tt.w)
 	}
 
-	require.NoError(t, stable.logdb.(*ShardedDB).Close())
+	sdb, _ := stable.logdb.(*ShardedDB)
+	require.NoError(t, sdb.Close())
 }
 
 // not related to logstable
@@ -755,7 +747,8 @@ func TestRLLTSlice(t *testing.T) {
 		}
 	}
 
-	require.NoError(t, stable.logdb.(*ShardedDB).Close())
+	sdb, _ := stable.logdb.(*ShardedDB)
+	require.NoError(t, sdb.Close())
 }
 
 func mustTerm(term uint64, err error) uint64 {

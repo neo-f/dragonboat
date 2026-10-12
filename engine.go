@@ -53,7 +53,7 @@ func (b *bitmap) add(v uint64) {
 	if v >= 64 {
 		panic("invalid v")
 	}
-	b.v = b.v | (1 << v)
+	b.v |= 1 << v
 }
 
 type from uint64
@@ -846,8 +846,8 @@ func (p *closeWorkerPool) workerPoolMain() {
 			p.timedWait()
 			return
 		} else if chosen == 1 {
-			node := v.Interface().(closeReq).node
-			p.pending = append(p.pending, node)
+			cr, _ := reflect.TypeAssert[closeReq](v)
+			p.pending = append(p.pending, cr.node)
 		} else if chosen > 1 && chosen < len(p.workers)+2 {
 			workerID := uint64(chosen - 2)
 			p.completed(workerID)
@@ -1193,9 +1193,9 @@ func (e *engine) loadApplyNodes(workerID uint64, cci uint64,
 // S: save snapshot
 // R: recover from snapshot
 // existing op, new op, action
-// S, S, ignore the new op
+// S, ignore the new op
 // S, R, R is queued as node state, will be handled when S is done
-// R, R, won't happen, when in R state, processApplies will not process the node
+// R, won't happen, when in R state, processApplies will not process the node
 // R, S, won't happen, when in R state, processApplies will not process the node
 
 func (e *engine) processApplies(idmap map[uint64]struct{},

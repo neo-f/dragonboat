@@ -406,7 +406,7 @@ func (s *StateMachine) doRecover(ss pb.Snapshot, init bool) error {
 func (s *StateMachine) load(ss pb.Snapshot, init bool) error {
 	if err := s.snapshotter.Load(ss, s.sessions, s.sm); err != nil {
 		plog.Errorf("%s failed to load %s, %v", s.id(), s.ssid(ss.Index), err)
-		if err == sm.ErrSnapshotStopped {
+		if errors.Is(err, sm.ErrSnapshotStopped) {
 			s.aborted = true
 		}
 		return err
@@ -465,7 +465,7 @@ func (s *StateMachine) OpenOnDiskStateMachine() (uint64, error) {
 	index, err := s.sm.Open()
 	if err != nil {
 		plog.Errorf("%s failed to open on disk SM, %v", s.id(), err)
-		if err == sm.ErrOpenStopped {
+		if errors.Is(err, sm.ErrOpenStopped) {
 			s.aborted = true
 		}
 		return 0, err

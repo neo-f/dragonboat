@@ -79,7 +79,7 @@ func OpenShardedDB(config config.NodeHostConfig, cb config.LogDBCallback,
 			panic("not suppose to reach here")
 		}
 	}
-	for i := uint64(0); i < config.Expert.LogDB.Shards; i++ {
+	for i := range config.Expert.LogDB.Shards {
 		dir := fs.PathJoin(dirs[i], fmt.Sprintf("logdb-%d", i))
 		lldir := ""
 		if len(lldirs) > 0 {
@@ -123,7 +123,7 @@ func OpenShardedDB(config config.NodeHostConfig, cb config.LogDBCallback,
 		compactionCh: make(chan struct{}, 1),
 		stopper:      syncutil.NewStopper(),
 	}
-	for i := uint64(0); i < config.Expert.Engine.ExecShards; i++ {
+	for i := range config.Expert.Engine.ExecShards {
 		mw.ctxs[i] = newContext(mw.config.SaveBufferSize, mw.config.MaxSaveBufferSize)
 	}
 	mw.stopper.RunWorker(func() {
@@ -134,7 +134,7 @@ func OpenShardedDB(config config.NodeHostConfig, cb config.LogDBCallback,
 
 // Name returns the type name of the instance.
 func (s *ShardedDB) Name() string {
-	return fmt.Sprintf("sharded-%s", s.shards[0].name())
+	return "sharded-" + s.shards[0].name()
 }
 
 // BinaryFormat is the binary format supported by the sharded DB.

@@ -81,6 +81,7 @@ func getNewTestDB(testDir string, dir string,
 
 func runLogDBTestAs(t *testing.T,
 	batched bool, tf func(t *testing.T, db raftio.ILogDB), fs vfs.IFS) {
+	t.Helper()
 	defer leaktest.AfterTest(t)()
 	testDir := t.TempDir()
 	dir := "db-dir"
@@ -94,18 +95,21 @@ func runLogDBTestAs(t *testing.T,
 
 func runLogDBTest(t *testing.T,
 	tf func(t *testing.T, db raftio.ILogDB), fs vfs.IFS) {
+	t.Helper()
 	runLogDBTestAs(t, false, tf, fs)
 	runLogDBTestAs(t, true, tf, fs)
 }
 
 func runBatchedLogDBTest(t *testing.T,
 	tf func(t *testing.T, db raftio.ILogDB), fs vfs.IFS) {
+	t.Helper()
 	runLogDBTestAs(t, true, tf, fs)
 }
 
 func TestRDBReturnErrNoBootstrapInfoWhenNoBootstrap(t *testing.T) {
 	fs := vfs.GetTestFS()
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		_, err := db.GetBootstrapInfo(1, 2)
 		require.ErrorIs(t, err, raftio.ErrNoBootstrapInfo)
 	}
@@ -114,6 +118,7 @@ func TestRDBReturnErrNoBootstrapInfoWhenNoBootstrap(t *testing.T) {
 
 func TestBootstrapInfoCanBeSavedAndChecked(t *testing.T) {
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		nodes := make(map[uint64]string)
 		nodes[100] = "address1"
 		nodes[200] = "address2"
@@ -144,6 +149,7 @@ func TestBootstrapInfoCanBeSavedAndChecked(t *testing.T) {
 
 func TestSnapshotHasMaxIndexSet(t *testing.T) {
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		ud1 := pb.Update{
 			EntriesToSave: []pb.Entry{{Index: 2}, {Index: 3}, {Index: 4}},
 			ShardID:       3,
@@ -151,7 +157,8 @@ func TestSnapshotHasMaxIndexSet(t *testing.T) {
 		}
 		err := db.SaveRaftState([]pb.Update{ud1}, 1)
 		require.NoError(t, err)
-		p := db.(*ShardedDB).shards
+		sdb, _ := db.(*ShardedDB)
+		p := sdb.shards
 		maxIndex, err := p[3].getMaxIndex(3, 4)
 		require.NoError(t, err)
 		require.Equal(t, uint64(4), maxIndex)
@@ -172,6 +179,7 @@ func TestSnapshotHasMaxIndexSet(t *testing.T) {
 
 func TestSaveSnapshotTogetherWithUnexpectedEntriesWillPanic(t *testing.T) {
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		ud1 := pb.Update{
 			EntriesToSave: []pb.Entry{{Index: 2}, {Index: 3}, {Index: 4}},
 			ShardID:       3,
@@ -189,6 +197,7 @@ func TestSaveSnapshotTogetherWithUnexpectedEntriesWillPanic(t *testing.T) {
 
 func TestSnapshotsSavedInSaveRaftState(t *testing.T) {
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		hs1 := pb.State{
 			Term:   2,
 			Vote:   3,
@@ -247,7 +256,8 @@ func TestSnapshotsSavedInSaveRaftState(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, snapshot2.Index, v.Index)
 
-		p := db.(*ShardedDB).shards
+		sdb, _ := db.(*ShardedDB)
+		p := sdb.shards
 		maxIndex, err := p[3].getMaxIndex(3, 3)
 		require.NoError(t, err)
 		require.Equal(t, uint64(20), maxIndex)
@@ -261,6 +271,7 @@ func TestSnapshotsSavedInSaveRaftState(t *testing.T) {
 
 func TestSnapshotOnlyNodeIsHandledByReadRaftState(t *testing.T) {
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		ss := pb.Snapshot{
 			Index: 100,
 			Term:  2,
@@ -288,6 +299,7 @@ func TestSnapshotOnlyNodeIsHandledByReadRaftState(t *testing.T) {
 
 func TestReadRaftStateReturnsNoSavedLogErrorWhenStateIsNeverSaved(t *testing.T) {
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		ss := pb.Snapshot{
 			Index: 100,
 			Term:  2,
@@ -307,6 +319,7 @@ func TestReadRaftStateReturnsNoSavedLogErrorWhenStateIsNeverSaved(t *testing.T) 
 
 func TestMaxIndexRuleIsEnforced(t *testing.T) {
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		hs := pb.State{
 			Term:   2,
 			Vote:   3,
@@ -351,6 +364,7 @@ func TestMaxIndexRuleIsEnforced(t *testing.T) {
 
 func TestSavedEntrieseAreOrderedByTheKey(t *testing.T) {
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		hs := pb.State{
 			Term:   2,
 			Vote:   3,
@@ -392,6 +406,7 @@ func TestSavedEntrieseAreOrderedByTheKey(t *testing.T) {
 }
 
 func testSaveRaftState(t *testing.T, db raftio.ILogDB) {
+	t.Helper()
 	hs := pb.State{
 		Term:   2,
 		Vote:   3,
@@ -428,6 +443,7 @@ func testSaveRaftState(t *testing.T, db raftio.ILogDB) {
 
 func TestSaveRaftState(t *testing.T) {
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		testSaveRaftState(t, db)
 	}
 	fs := vfs.GetTestFS()
@@ -436,6 +452,7 @@ func TestSaveRaftState(t *testing.T) {
 
 func TestStateIsUpdated(t *testing.T) {
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		hs := pb.State{
 			Term:   2,
 			Vote:   3,
@@ -479,6 +496,7 @@ func TestStateIsUpdated(t *testing.T) {
 
 func TestMaxIndexIsUpdated(t *testing.T) {
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		hs := pb.State{
 			Term:   2,
 			Vote:   3,
@@ -498,7 +516,8 @@ func TestMaxIndexIsUpdated(t *testing.T) {
 		}
 		err := db.SaveRaftState([]pb.Update{ud}, 1)
 		require.NoError(t, err)
-		p := db.(*ShardedDB).shards
+		sdb, _ := db.(*ShardedDB)
+		p := sdb.shards
 		maxIndex, err := p[3].getMaxIndex(3, 4)
 		require.NoError(t, err)
 		require.Equal(t, uint64(10), maxIndex)
@@ -526,6 +545,7 @@ func TestMaxIndexIsUpdated(t *testing.T) {
 
 func TestReadAllEntriesOnlyReturnEntriesFromTheSpecifiedNode(t *testing.T) {
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		hs := pb.State{
 			Term:   2,
 			Vote:   3,
@@ -576,6 +596,7 @@ func TestReadAllEntriesOnlyReturnEntriesFromTheSpecifiedNode(t *testing.T) {
 
 func TestIterateEntriesOnlyReturnCurrentNodeEntries(t *testing.T) {
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		ents, _, err := db.IterateEntries([]pb.Entry{}, 0, 3, 4, 10, 13, math.MaxUint64)
 		require.NoError(t, err)
 		require.Empty(t, ents)
@@ -634,6 +655,7 @@ func TestIterateEntriesOnlyReturnCurrentNodeEntries(t *testing.T) {
 
 func TestIterateEntries(t *testing.T) {
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		ents, _, err := db.IterateEntries([]pb.Entry{}, 0, 3, 4, 10, 13, math.MaxUint64)
 		require.NoError(t, err)
 		require.Empty(t, ents)
@@ -711,6 +733,7 @@ func TestIterateEntries(t *testing.T) {
 
 func TestSaveSnapshot(t *testing.T) {
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		_, err := db.GetSnapshot(1, 2)
 		require.NoError(t, err)
 		s1 := pb.Snapshot{
@@ -742,6 +765,7 @@ func TestSaveSnapshot(t *testing.T) {
 
 func TestOldSnapshotIsIgnored(t *testing.T) {
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		rec0 := pb.Update{
 			ShardID:   1,
 			ReplicaID: 2,
@@ -776,6 +800,7 @@ func TestParseNodeInfoKeyPanicOnUnexpectedKeySize(t *testing.T) {
 
 func TestSaveEntriesWithIndexGap(t *testing.T) {
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		shardID := uint64(0)
 		replicaID := uint64(4)
 		e1 := pb.Entry{
@@ -835,7 +860,9 @@ func TestSaveEntriesWithIndexGap(t *testing.T) {
 
 func testAllWantedEntriesAreAccessible(t *testing.T,
 	first uint64, last uint64) {
+	t.Helper()
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		shardID := uint64(0)
 		replicaID := uint64(4)
 		ents := make([]pb.Entry, 0)
@@ -991,6 +1018,7 @@ func TestReadRaftStateWithSnapshot(t *testing.T) {
 		firstIndex := tt.firstIndex
 		lastIndex := tt.lastIndex
 		tf := func(t *testing.T, db raftio.ILogDB) {
+			t.Helper()
 			shardID := uint64(0)
 			replicaID := uint64(4)
 			ents := make([]pb.Entry, 0)
@@ -1039,6 +1067,7 @@ func TestReadRaftStateWithSnapshot(t *testing.T) {
 
 func TestReadRaftStateWithEntriesOnly(t *testing.T) {
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		shardID := uint64(0)
 		replicaID := uint64(4)
 		ents := make([]pb.Entry, 0)
@@ -1074,6 +1103,7 @@ func TestReadRaftStateWithEntriesOnly(t *testing.T) {
 
 func TestRemoveNodeData(t *testing.T) {
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		shardID := uint64(0)
 		replicaID := uint64(4)
 		ents := make([]pb.Entry, 0)
@@ -1131,6 +1161,7 @@ func TestRemoveNodeData(t *testing.T) {
 
 func TestImportSnapshot(t *testing.T) {
 	tf := func(t *testing.T, db raftio.ILogDB) {
+		t.Helper()
 		shardID := uint64(2)
 		replicaID := uint64(4)
 		ents := make([]pb.Entry, 0)
@@ -1181,7 +1212,8 @@ func TestImportSnapshot(t *testing.T) {
 		require.NotEqual(t, raftio.RaftState{}, state)
 		require.Equal(t, snapshot.Index, state.State.Commit)
 
-		sdb := db.(*ShardedDB).shards[2]
+		sharded, _ := db.(*ShardedDB)
+		sdb := sharded.shards[2]
 		sdb.cs.maxIndex = make(map[raftio.NodeInfo]uint64)
 		maxIndex, err := sdb.getMaxIndex(shardID, replicaID)
 		require.NoError(t, err)

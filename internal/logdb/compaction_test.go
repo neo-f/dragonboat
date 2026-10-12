@@ -35,7 +35,7 @@ func TestCompactionTaskCanBeAdded(t *testing.T) {
 	p := newCompactions()
 	p.addTask(task{shardID: 1, replicaID: 2, index: 3})
 	assert.Equal(t, 1, p.len(), "len unexpectedly reported %d", p.len())
-	assert.Equal(t, 1, len(p.pendings), "p.pending len is not 1")
+	assert.Len(t, p.pendings, 1, "p.pending len is not 1")
 	v, ok := p.pendings[raftio.NodeInfo{ShardID: 1, ReplicaID: 2}]
 	assert.True(t, ok, "not added")
 	assert.Equal(t, uint64(3), v.index, "unexpected index %d", v)
@@ -46,7 +46,7 @@ func TestCompactionTaskCanBeUpdated(t *testing.T) {
 	p := newCompactions()
 	p.addTask(task{shardID: 1, replicaID: 2, index: 3})
 	p.addTask(task{shardID: 1, replicaID: 2, index: 10})
-	assert.Equal(t, 1, len(p.pendings), "p.pending len is not 1")
+	assert.Len(t, p.pendings, 1, "p.pending len is not 1")
 	v, ok := p.pendings[raftio.NodeInfo{ShardID: 1, ReplicaID: 2}]
 	assert.True(t, ok, "not added")
 	assert.Equal(t, uint64(10), v.index, "unexpected index %d", v)

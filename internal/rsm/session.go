@@ -32,7 +32,7 @@ type RaftSeriesID uint64
 
 // Compare implements the llrb.Comparable interface.
 func (a *RaftClientID) Compare(b llrb.Comparable) int {
-	bk := b.(*RaftClientID)
+	bk, _ := b.(*RaftClientID)
 	aval := *a
 	bval := *bk
 	switch {

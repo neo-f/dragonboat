@@ -65,6 +65,7 @@ func TestRemoveShard(t *testing.T) {
 }
 
 func testInvalidAddressWillPanic(t *testing.T, addr string) {
+	t.Helper()
 	nodes := NewNodeRegistry(settings.Soft.StreamConnections,
 		stringutil.IsValidAddress)
 	require.Panics(t, func() {

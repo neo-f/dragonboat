@@ -403,10 +403,8 @@ func (v *SnapshotValidator) AddChunk(data []byte, chunkID uint64) bool {
 		if !ok {
 			return false
 		}
-	} else {
-		if v.v == nil {
-			return false
-		}
+	} else if v.v == nil {
+		return false
 	}
 	return v.v.AddChunk(data, chunkID)
 }

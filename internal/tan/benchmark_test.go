@@ -26,6 +26,7 @@ import (
 var benchmarkTestDirname = "tan_benchmark_dir"
 
 func benchmarkWrite(b *testing.B, sz int) {
+	b.Helper()
 	logger.GetLogger("tan").SetLevel(logger.WARNING)
 	b.ReportAllocs()
 	fs := vfs.GetTestFS()
@@ -55,7 +56,7 @@ func benchmarkWrite(b *testing.B, sz int) {
 		},
 	}
 	buf := make([]byte, sz*2)
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		sync, err := db.write(u, buf)
 		if err != nil {
 			b.Fatalf("failed to write %v", err)

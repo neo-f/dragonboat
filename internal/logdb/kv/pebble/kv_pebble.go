@@ -19,6 +19,7 @@ package pebble
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -184,7 +185,7 @@ func openPebbleDB(config config.LogDBConfig, callback kv.LogDBCallback,
 	var lopts [7]pebble.LevelOptions
 	var targetFileSizes [7]int64
 	sz := targetFileSizeBase
-	for l := int64(0); l < numOfLevels; l++ {
+	for l := range numOfLevels {
 		lopts[l] = pebble.LevelOptions{
 			Compression: func() *sstable.CompressionProfile {
 				return sstable.NoCompression
@@ -192,7 +193,7 @@ func openPebbleDB(config config.LogDBConfig, callback kv.LogDBCallback,
 			BlockSize: blockSize,
 		}
 		targetFileSizes[l] = sz
-		sz = sz * levelSizeMultiplier
+		sz *= levelSizeMultiplier
 	}
 	if inMonkeyTesting {
 		writeBufferSize = 1024 * 1024 * 4
@@ -320,7 +321,7 @@ func (r *KV) IterateValue(fk []byte, lk []byte, inc bool,
 // GetValue ...
 func (r *KV) GetValue(key []byte, op func([]byte) error) (err error) {
 	val, closer, err := r.db.Get(key)
-	if err != nil && err != pebble.ErrNotFound {
+	if err != nil && !errors.Is(err, pebble.ErrNotFound) {
 		return err
 	}
 	defer func() {

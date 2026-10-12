@@ -65,7 +65,7 @@ func TestSessionIsMutable(t *testing.T) {
 	r, ok = m.getSession(RaftClientID(0))
 	require.True(t, ok, "session object not returned")
 	assert.Equal(t, RaftClientID(0), r.ClientID, "client id mismatch")
-	assert.Equal(t, 1, len(r.History), "history size mismatch")
+	assert.Len(t, r.History, 1, "history size mismatch")
 }
 
 func TestOrderedDoIsLRUOrdered(t *testing.T) {
@@ -75,16 +75,16 @@ func TestOrderedDoIsLRUOrdered(t *testing.T) {
 		m.addSession(i, *s)
 	}
 	for range 100 {
-		idx := rand.Int() % 100
+		idx := rand.Int() % 100 //nolint:gosec // non-cryptographic use: test session selection
 		m.getSession(RaftClientID(idx))
 
 		idList := make([]RaftClientID, 0)
 		m.sessions.OrderedDo(func(k, v any) {
-			key := k.(*RaftClientID)
+			key, _ := k.(*RaftClientID)
 			idList = append(idList, *key)
 		})
 
-		assert.Equal(t, 100, len(idList), "size mismatch")
+		assert.Len(t, idList, 100, "size mismatch")
 		assert.Equal(t, RaftClientID(idx), idList[99], "last element mismatch")
 	}
 }
@@ -92,7 +92,7 @@ func TestOrderedDoIsLRUOrdered(t *testing.T) {
 func TestLRUSessionCanBeSavedAndRestoredWithLRUOrderPreserved(t *testing.T) {
 	m := newLRUSession(100)
 	for i := range RaftClientID(100) {
-		count := rand.Int() % 100
+		count := rand.Int() % 100 //nolint:gosec // non-cryptographic use: test data
 		s := newSession(i)
 		for j := range count {
 			s.addResponse(RaftSeriesID(j), sm.Result{Value: uint64(j)})
@@ -100,12 +100,12 @@ func TestLRUSessionCanBeSavedAndRestoredWithLRUOrderPreserved(t *testing.T) {
 		m.addSession(i, *s)
 	}
 	for range 100 {
-		idx := rand.Int() % 100
+		idx := rand.Int() % 100 //nolint:gosec // non-cryptographic use: test session selection
 		m.getSession(RaftClientID(idx))
 	}
 	oldList := make([]RaftClientID, 0)
 	m.sessions.OrderedDo(func(k, v any) {
-		key := k.(*RaftClientID)
+		key, _ := k.(*RaftClientID)
 		oldList = append(oldList, *key)
 	})
 	snapshot := &bytes.Buffer{}
@@ -118,16 +118,16 @@ func TestLRUSessionCanBeSavedAndRestoredWithLRUOrderPreserved(t *testing.T) {
 	require.NoError(t, err, "load failed")
 	newList := make([]RaftClientID, 0)
 	newLRUSession.sessions.OrderedDo(func(k, v any) {
-		key := k.(*RaftClientID)
+		key, _ := k.(*RaftClientID)
 		newList = append(newList, *key)
 	})
-	assert.Equal(t, len(oldList), len(newList), "size mismatch")
+	assert.Len(t, newList, len(oldList), "size mismatch")
 	for idx := range oldList {
 		assert.Equal(t, oldList[idx], newList[idx], "order is different")
 	}
 	for i := range 1000 {
 		if i%2 == 0 {
-			idx := rand.Int() % 100
+			idx := rand.Int() % 100 //nolint:gosec // non-cryptographic use: test session selection
 			m.getSession(RaftClientID(idx))
 			newLRUSession.getSession(RaftClientID(idx))
 		} else {
@@ -140,15 +140,15 @@ func TestLRUSessionCanBeSavedAndRestoredWithLRUOrderPreserved(t *testing.T) {
 	}
 	oldList = make([]RaftClientID, 0)
 	m.sessions.OrderedDo(func(k, v any) {
-		key := k.(*RaftClientID)
+		key, _ := k.(*RaftClientID)
 		oldList = append(oldList, *key)
 	})
 	newList = make([]RaftClientID, 0)
 	newLRUSession.sessions.OrderedDo(func(k, v any) {
-		key := k.(*RaftClientID)
+		key, _ := k.(*RaftClientID)
 		newList = append(newList, *key)
 	})
-	assert.Equal(t, len(oldList), len(newList), "size mismatch")
+	assert.Len(t, newList, len(oldList), "size mismatch")
 	for idx := range oldList {
 		assert.Equal(t, oldList[idx], newList[idx], "order is different")
 	}

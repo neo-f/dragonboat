@@ -15,7 +15,7 @@
 package rsm
 
 import (
-	"crypto/md5"
+	"crypto/md5" //nolint:gosec // used for data checksums, not security
 	"encoding/binary"
 	"maps"
 	"slices"
@@ -90,7 +90,7 @@ func (m *membership) getHash() uint64 {
 	slices.Sort(vals)
 	vals = append(vals, m.members.ConfigChangeId)
 	data := make([]byte, 8)
-	hash := md5.New()
+	hash := md5.New() //nolint:gosec // used for data checksums, not security
 	for _, v := range vals {
 		binary.LittleEndian.PutUint64(data, v)
 		fileutil.MustWrite(hash, data)

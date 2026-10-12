@@ -824,7 +824,7 @@ func TestIndexEncodeDecode(t *testing.T) {
 		d := &indexDecoder{bufio.NewReader(buf)}
 		require.NoErrorf(t, decoded.decode(d), "idx: %d", idx)
 		if len(decoded.entries) == 0 {
-			require.Truef(t, len(input.entries) == 0, "idx: %d", idx)
+			require.Emptyf(t, input.entries, "idx: %d", idx)
 		} else {
 			require.Equalf(t, input, decoded, "idx: %d", idx)
 		}
@@ -856,7 +856,7 @@ func TestIndexSaveLoad(t *testing.T) {
 	nodeStates.indexes[ni1] = i1
 	nodeStates.indexes[ni2] = i2
 	fs := dvfs.NewMemFS()
-	dirname := "db-dir"
+	dirname := testDBDir
 	require.NoError(t, fs.MkdirAll(dirname, 0755))
 	dir, err := fs.OpenDir(dirname)
 	require.NoError(t, err)
@@ -869,7 +869,7 @@ func TestIndexSaveLoad(t *testing.T) {
 
 	loaded := newNodeStates()
 	require.NoError(t, loaded.load(dirname, fileNum(1), fs))
-	require.Equal(t, 2, len(loaded.indexes))
+	require.Len(t, loaded.indexes, 2)
 	require.Equal(t, i1.shardID, loaded.indexes[ni1].shardID)
 	require.Equal(t, i1.replicaID, loaded.indexes[ni1].replicaID)
 	require.Equal(t, i1entries, loaded.indexes[ni1].entries)
@@ -893,7 +893,7 @@ func TestIndexLoadIsAppendOnly(t *testing.T) {
 	nodeStates.indexes[ni1] = i
 	currEntries := i.currEntries
 	fs := dvfs.NewMemFS()
-	dirname := "db-dir"
+	dirname := testDBDir
 	require.NoError(t, fs.MkdirAll(dirname, 0700))
 	dir, err := fs.OpenDir(dirname)
 	require.NoError(t, err)

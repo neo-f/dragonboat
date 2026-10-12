@@ -96,7 +96,7 @@ func getEncoded(ct dio.CompressionType, cmd []byte, dst []byte) []byte {
 			panic("invalid payload length")
 		}
 		// 1 byte header
-		maxSize = maxSize + 1
+		maxSize++
 		if uint64(len(dst)) < maxSize {
 			dst = make([]byte, maxSize)
 		}
@@ -112,12 +112,12 @@ func getEncoded(ct dio.CompressionType, cmd []byte, dst []byte) []byte {
 
 func getEncodedHeader(version uint8, cf uint8, session bool) uint8 {
 	result := uint8(0)
-	result = result | version
-	result = result | cf
+	result |= version
+	result |= cf
 	if session {
-		result = result | EEHasSession
+		result |= EEHasSession
 	} else {
-		result = result | EENoSession
+		result |= EENoSession
 	}
 	return result
 }

@@ -56,7 +56,7 @@ func TestSendSavedSnapshotPutsAllChunksInCh(t *testing.T) {
 		transport, nil, fs)
 	require.Equal(t, len(chunks), cap(c.ch), "unexpected chan length")
 	c.addSnapshot(chunks)
-	require.Equal(t, len(chunks), len(c.ch), "not all chunks pushed to ch")
+	require.Len(t, c.ch, len(chunks), "not all chunks pushed to ch")
 }
 
 func TestKeepSendingChunksUsingFailedJobWillNotBlock(t *testing.T) {
@@ -79,7 +79,7 @@ func TestKeepSendingChunksUsingFailedJobWillNotBlock(t *testing.T) {
 	require.True(t, sent, "failed to send")
 	require.False(t, stopped, "unexpectedly stopped")
 	stopper.Stop()
-	require.NotNil(t, perr, "error didn't return from process()")
+	require.Error(t, perr, "error didn't return from process()")
 	for range streamingChanLength * 10 {
 		c.AddChunk(pb.Chunk{})
 	}
@@ -93,6 +93,7 @@ func TestKeepSendingChunksUsingFailedJobWillNotBlock(t *testing.T) {
 
 func testSpecialChunkCanStopTheProcessLoop(t *testing.T,
 	tt uint64, experr error, fs vfs.IFS) {
+	t.Helper()
 	cfg := config.NodeHostConfig{}
 	transport := NewNOOPTransport(cfg, nil, nil)
 	c := newJob(t.Context(), 1, 1, 1, true, 0, transport, nil, fs)

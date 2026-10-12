@@ -87,7 +87,7 @@ func (cw *countedWriter) Write(data []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	cw.total = cw.total + uint64(n)
+	cw.total += uint64(n)
 	return n, nil
 }
 

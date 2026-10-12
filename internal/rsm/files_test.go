@@ -28,14 +28,14 @@ func TestFileCanBeAddedToFileCollection(t *testing.T) {
 	fc := NewFileCollection()
 	fc.AddFile(1, "test.data", make([]byte, 12))
 	fc.AddFile(2, "test.data2", make([]byte, 16))
-	require.Equal(t, 2, len(fc.files))
-	require.Equal(t, 2, len(fc.idmap))
+	require.Len(t, fc.files, 2)
+	require.Len(t, fc.idmap, 2)
 	require.Equal(t, "test.data", fc.files[0].Filepath)
 	require.Equal(t, uint64(1), fc.files[0].FileId)
-	require.Equal(t, 12, len(fc.files[0].Metadata))
+	require.Len(t, fc.files[0].Metadata, 12)
 	require.Equal(t, "test.data2", fc.files[1].Filepath)
 	require.Equal(t, uint64(2), fc.files[1].FileId)
-	require.Equal(t, 16, len(fc.files[1].Metadata))
+	require.Len(t, fc.files[1].Metadata, 16)
 }
 
 func TestFileWithDuplicatedIDCanNotBeAdded(t *testing.T) {

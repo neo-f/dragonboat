@@ -47,7 +47,7 @@ func TestSessionSaveOrderWithEviction(t *testing.T) {
 	sm1 := &SessionManager{lru: newLRUSession(4)}
 	sm2 := &SessionManager{lru: newLRUSession(4)}
 
-	for i := uint64(0); i < sm1.lru.size; i++ {
+	for i := range sm1.lru.size {
 		sm1.RegisterClientID(i)
 	}
 	// touch the oldest session to make it the most recently accessed
@@ -75,7 +75,7 @@ func TestSessionSaveOrderWithEviction(t *testing.T) {
 	check := func(c *cache.OrderedCache) {
 		keys := make(map[uint64]struct{})
 		c.OrderedDo(func(k, v any) {
-			clientID := k.(*RaftClientID)
+			clientID, _ := k.(*RaftClientID)
 			keys[uint64(*clientID)] = struct{}{}
 		})
 		_, ok := keys[0]

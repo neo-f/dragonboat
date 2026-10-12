@@ -15,7 +15,7 @@
 package tests
 
 import (
-	"crypto/md5"
+	"crypto/md5" //nolint:gosec // used for data checksums, not security
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -65,7 +65,7 @@ func NewConcurrentKVTest(shardID uint64, replicaID uint64) sm.IConcurrentStateMa
 	for i := 0; i < len(kvdata.junk); i++ {
 		kvdata.junk[i] = 2
 	}
-	s.kvdata = unsafe.Pointer(kvdata)
+	s.kvdata = unsafe.Pointer(kvdata) //nolint:gosec // lock-free state swap in test SM, reviewed
 
 	v := os.Getenv("EXTERNALFILETEST")
 	s.externalFileTest = len(v) > 0
@@ -76,10 +76,12 @@ func NewConcurrentKVTest(shardID uint64, replicaID uint64) sm.IConcurrentStateMa
 // Lookup performances local looks up for the sepcified data.
 func (s *ConcurrentKVTest) Lookup(key any) (any, error) {
 	kvdata := (*kvdata)(atomic.LoadPointer(&(s.kvdata)))
-	query := string(key.([]byte))
+	kb, _ := key.([]byte)
+	query := string(kb)
 	v, ok := kvdata.kvs.Load(query)
 	if ok {
-		return []byte(v.(string)), nil
+		vs, _ := v.(string)
+		return []byte(vs), nil
 	}
 	return []byte(""), nil
 }
@@ -109,8 +111,8 @@ func (s *ConcurrentKVTest) PrepareSnapshot() (any, error) {
 	}
 	data.junk = append(data.junk, p.junk...)
 	p.kvs.Range(func(k, v any) bool {
-		key := k.(string)
-		val := v.(string)
+		key, _ := k.(string)
+		val, _ := v.(string)
 		data.kvs.Store(key, val)
 		return true
 	})
@@ -137,15 +139,15 @@ func (s *ConcurrentKVTest) SaveSnapshot(ctx any,
 		default:
 		}
 	}
-	ctxdata := ctx.(*kvdata)
+	ctxdata, _ := ctx.(*kvdata)
 	jsondata := &KVJson{
 		KVStore: make(map[string]string),
 		Count:   ctxdata.count,
 		Junk:    ctxdata.junk,
 	}
 	ctxdata.kvs.Range(func(k, v any) bool {
-		key := k.(string)
-		val := v.(string)
+		key, _ := k.(string)
+		val, _ := v.(string)
 		jsondata.KVStore[key] = val
 		return true
 	})
@@ -195,7 +197,7 @@ func (s *ConcurrentKVTest) RecoverFromSnapshot(r io.Reader,
 	}
 	kvdata.count = jsondata.Count
 	kvdata.junk = jsondata.Junk
-	atomic.StorePointer(&(s.kvdata), unsafe.Pointer(kvdata))
+	atomic.StorePointer(&(s.kvdata), unsafe.Pointer(kvdata)) //nolint:gosec // lock-free state swap in test SM, reviewed
 	return nil
 }
 
@@ -213,8 +215,8 @@ func (s *ConcurrentKVTest) GetHash() (uint64, error) {
 		Count:   p.count,
 	}
 	p.kvs.Range(func(k, v any) bool {
-		key := k.(string)
-		val := v.(string)
+		key, _ := k.(string)
+		val, _ := v.(string)
 		jsondata.KVStore[key] = val
 		return true
 	})
@@ -222,7 +224,7 @@ func (s *ConcurrentKVTest) GetHash() (uint64, error) {
 	if err != nil {
 		panic(err)
 	}
-	hash := md5.New()
+	hash := md5.New() //nolint:gosec // used for data checksums, not security
 	if _, err = hash.Write(data); err != nil {
 		panic(err)
 	}

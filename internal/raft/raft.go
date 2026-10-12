@@ -882,19 +882,13 @@ func (r *raft) sortMatchValues() {
 	// unrolled bubble sort, sort.Slice is not allocation free
 	if len(r.matched) == 3 {
 		if r.matched[0] > r.matched[1] {
-			v := r.matched[0]
-			r.matched[0] = r.matched[1]
-			r.matched[1] = v
+			r.matched[0], r.matched[1] = r.matched[1], r.matched[0]
 		}
 		if r.matched[1] > r.matched[2] {
-			v := r.matched[1]
-			r.matched[1] = r.matched[2]
-			r.matched[2] = v
+			r.matched[1], r.matched[2] = r.matched[2], r.matched[1]
 		}
 		if r.matched[0] > r.matched[1] {
-			v := r.matched[0]
-			r.matched[0] = r.matched[1]
-			r.matched[1] = v
+			r.matched[0], r.matched[1] = r.matched[1], r.matched[0]
 		}
 	} else if len(r.matched) == 1 {
 		return
@@ -1889,15 +1883,13 @@ func (r *raft) handleLeaderReplicateResp(m pb.Message, rp *remote) error {
 				r.sendTimeoutNowMessage(r.leaderTransferTarget)
 			}
 		}
-	} else {
+	} else if rp.decreaseTo(m.LogIndex, m.Hint) {
 		// the replication flow control code is derived from etcd raft, it resets
 		// nextIndex to match + 1. it is thus even more conservative than the raft
 		// thesis's approach of nextIndex = nextIndex - 1 mentioned on the p21 of
 		// the thesis.
-		if rp.decreaseTo(m.LogIndex, m.Hint) {
-			r.enterRetryState(rp)
-			r.sendReplicateMessage(m.From)
-		}
+		r.enterRetryState(rp)
+		r.sendReplicateMessage(m.From)
 	}
 	return nil
 }
