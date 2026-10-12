@@ -5,84 +5,99 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - name: Install Go
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v5
       with:
-        go-version: 1.24.x
+        go-version: 1.27.x
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v5
     - name: Test
-      env:
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-      run: |
-       make actions-test
-       bash <(curl -s https://codecov.io/bash) -t $CODECOV_TOKEN
+      run: make actions-test
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: coverage.txt
   race-unit-test:
     runs-on: ubuntu-22.04
     steps:
     - name: Install Go
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v5
       with:
-        go-version: 1.24.x
+        go-version: 1.27.x
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v5
     - name: Test
       run: RACE=1 make test
   memfs-unit-test:
     runs-on: ubuntu-22.04
     steps:
     - name: Install Go
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v5
       with:
-        go-version: 1.24.x
+        go-version: 1.27.x
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v5
     - name: Test
       run: MEMFS_TEST=1 make test
   macos-unit-test:
     runs-on: macos-latest
     steps:
     - name: Install Go
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v5
       with:
-        go-version: 1.24.x
+        go-version: 1.27.x
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v5
     - name: Test
       run: make test
   build-tools:
     runs-on: ubuntu-22.04
     steps:
     - name: Install Go
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v5
       with:
-        go-version: 1.24.x
+        go-version: 1.27.x
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v5
     - name: Build
       run: make tools
   build-examples:
     runs-on: ubuntu-22.04
     steps:
     - name: Install Go
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v5
       with:
-        go-version: 1.24.x
+        go-version: 1.27.x
+    - name: Checkout code
+      uses: actions/checkout@v5
     - name: Build
       run: |
        git clone https://github.com/lni/dragonboat-example
        cd dragonboat-example
-       GOPROXY=direct go get github.com/lni/dragonboat/v4@master
+       go mod edit -replace=github.com/lni/dragonboat/v4=$GITHUB_WORKSPACE
+       GOPROXY=direct go get github.com/lni/dragonboat/v4
        make
   static-check:
     runs-on: ubuntu-22.04
     steps: 
      - name: Install Go
-       uses: actions/setup-go@v3
+       uses: actions/setup-go@v5
        with:
-         go-version: 1.24.x
+         go-version: 1.27.x
      - name: Checkout code
-       uses: actions/checkout@v3
+       uses: actions/checkout@v5
      - name: Static check
        run: |
         make install-static-check-tools
         make static-check
+  govulncheck:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Install Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: 1.27.x
+    - name: Checkout code
+      uses: actions/checkout@v5
+    - name: Run govulncheck
+      uses: golang/govulncheck-action@v1
