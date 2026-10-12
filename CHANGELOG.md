@@ -1,3 +1,18 @@
+## Fork changes (unreleased)
+
+This fork upgrades all dependencies to their latest versions and modernizes the codebase for Go 1.27. Go 1.27 or above is required.
+
+### Breaking changes
+
+- Pebble has been upgraded to v2.1.7 (github.com/cockroachdb/pebble/v2). Pebble v2 can not open data directories created by the 2022 version of pebble used previously (format major version 1 is no longer supported). Existing KV based LogDB data must be migrated first - either open it once with a pebble v1.x based dragonboat to upgrade its format major version, or rebuild it by re-replicating from the cluster. tan based LogDB is not affected.
+
+### Upgrades
+
+- All direct dependencies upgraded to their latest versions, including pebble/v2 v2.1.7, memberlist v0.7.0, cockroachdb/errors v1.14.0, testify v1.12.1, VictoriaMetrics/metrics v1.44.1, snappy v1.0.0 and golang/snappy, lz4, xxhash, x/exp, x/sys etc.
+- google/uuid has been replaced with the standard library uuid package introduced in Go 1.27.
+- Codebase modernized for Go 1.27 - math/rand/v2, slices, maps, cmp, min/max builtins, clear, sync.OnceFunc, atomic types, range over int, t.Context, b.Loop, errors.Is and more.
+- golangci-lint upgraded to v2.14.0 with the modernize linter enabled, govulncheck and dependabot enabled in CI, GitHub actions upgraded to v5.
+
 ## v4.0 (TBD)
 
 Dragonboat v4.0 is a major release with new features, improvements and API changes.
