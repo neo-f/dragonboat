@@ -17,6 +17,7 @@ package transport
 import (
 	"fmt"
 	"io"
+	"maps"
 	"sync"
 	"sync/atomic"
 
@@ -169,9 +170,7 @@ func (c *Chunk) getTracked() map[string]*tracked {
 	m := make(map[string]*tracked)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for k, v := range c.tracked {
-		m[k] = v
-	}
+	maps.Copy(m, c.tracked)
 	return m
 }
 

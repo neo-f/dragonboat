@@ -40,11 +40,11 @@ var (
 
 // GetEmptyLRUSession returns an marshaled empty sessions instance.
 func GetEmptyLRUSession() []byte {
-	v := make([]byte, 0)
 	sz := make([]byte, 8)
 	binary.LittleEndian.PutUint64(sz, LRUMaxSessionCount)
 	total := make([]byte, 8)
 	binary.LittleEndian.PutUint64(total, 0)
+	v := make([]byte, 0, len(sz)+len(total))
 	v = append(v, sz...)
 	v = append(v, total...)
 	return v
@@ -69,7 +69,7 @@ func newLRUSession(size uint64) *lrusession {
 		size:     size,
 		sessions: cache.NewOrderedCache(cache.Config{Policy: cache.CacheLRU}),
 	}
-	rec.sessions.ShouldEvict = func(n int, k, v interface{}) bool {
+	rec.sessions.ShouldEvict = func(n int, k, v any) bool {
 		if uint64(n) > rec.size {
 			clientID := k.(*RaftClientID)
 			plog.Warningf("session with client id %d evicted, overloaded", *clientID)
@@ -77,7 +77,7 @@ func newLRUSession(size uint64) *lrusession {
 		}
 		return false
 	}
-	rec.sessions.OnEvicted = func(k, v, e interface{}) {}
+	rec.sessions.OnEvicted = func(k, v, e any) {}
 	return rec
 }
 
@@ -94,7 +94,7 @@ func (rec *lrusession) save(writer io.Writer) error {
 	rec.Lock()
 	defer rec.Unlock()
 	idList := make([]RaftClientID, 0)
-	rec.sessions.OrderedDo(func(k, v interface{}) {
+	rec.sessions.OrderedDo(func(k, v any) {
 		key := k.(*RaftClientID)
 		idList = append(idList, *key)
 	})
@@ -134,7 +134,7 @@ func (rec *lrusession) load(reader io.Reader, v SSVersion) error {
 		return err
 	}
 	total := binary.LittleEndian.Uint64(sizebuf)
-	for i := uint64(0); i < total; i++ {
+	for range total {
 		s := &Session{}
 		err := s.recoverFromSnapshot(reader, v)
 		if err != nil {

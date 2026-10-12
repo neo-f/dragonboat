@@ -75,7 +75,7 @@ func newDummyStateMachine(shardID uint64, replicaID uint64) sm.IStateMachine {
 	return &dummyStateMachine{}
 }
 
-func (s *dummyStateMachine) Lookup(query interface{}) (interface{}, error) {
+func (s *dummyStateMachine) Lookup(query any) (any, error) {
 	return query, nil
 }
 
@@ -211,7 +211,7 @@ func main() {
 		}
 	}
 	for i := uint64(1); i <= uint64(*shardcount); i++ {
-		for j := 0; j < 10000; j++ {
+		for j := range 10000 {
 			leaderID, _, ok, err := nh.GetLeaderID(i)
 			if err != nil {
 				panic(err)
@@ -278,7 +278,7 @@ func main() {
 				cmd := make([]byte, 16)
 				results[workerID] = 0
 				for {
-					for j := 0; j < 32; j++ {
+					for range 32 {
 						rs, err := nh.Propose(cs, cmd, 4*time.Second)
 						if err != nil {
 							panic(err)
@@ -298,7 +298,7 @@ func main() {
 			})
 		}
 	}
-	reads := struct{ v uint64 }{}
+	reads := struct{ v atomic.Uint64 }{}
 	if *read || *readonly {
 		for i := uint64(0); i < uint64(*clientcount); i++ {
 			workerID := i
@@ -306,14 +306,14 @@ func main() {
 				shardID := (workerID % uint64(*shardcount)) + 1
 				nh := nhList[shardID-1]
 				for {
-					for j := 0; j < 32; j++ {
+					for range 32 {
 						rs, err := nh.ReadIndex(shardID, 4*time.Second)
 						if err != nil {
 							panic(err)
 						}
 						v := <-rs.ResultC()
 						if v.Completed() {
-							atomic.AddUint64(&reads.v, 1)
+							reads.v.Add(1)
 							if _, err := nh.ReadLocalNode(rs, nil); err != nil {
 								panic(err)
 							}
@@ -334,7 +334,7 @@ func main() {
 	for _, v := range results {
 		total = total + v
 	}
-	rv := atomic.LoadUint64(&reads.v)
+	rv := reads.v.Load()
 	fmt.Printf("read %d, %d reads per second\n", rv, rv/uint64(*seconds))
 	fmt.Printf("total %d, %d proposals per second\n", total, total/uint64(*seconds))
 }

@@ -186,9 +186,7 @@ func (r *readyShard) setShardReady(shardID uint64) {
 
 func (r *readyShard) getReadyShards() map[uint64]struct{} {
 	m := r.maps[(r.index+1)%2]
-	for k := range m {
-		delete(m, k)
-	}
+	clear(m)
 	r.mu.Lock()
 	v := r.ready
 	r.index++

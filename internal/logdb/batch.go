@@ -327,9 +327,7 @@ func (be *batchedEntries) record(wb kv.IWriteBatch,
 	lastBatchID := getBatchID(entries[len(entries)-1].Index)
 	for idx < len(entries) {
 		ent := entries[idx]
-		if ent.Index > maxIndex {
-			maxIndex = ent.Index
-		}
+		maxIndex = max(maxIndex, ent.Index)
 		batchID := getBatchID(ent.Index)
 		if batchID != currentBatchIdx {
 			be.recordBatch(wb, shardID, replicaID, eb, firstBatchID, lastBatchID, ctx)

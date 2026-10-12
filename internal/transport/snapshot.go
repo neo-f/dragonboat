@@ -207,9 +207,9 @@ func splitBySnapshotFile(msg pb.Message,
 	if filesize == 0 {
 		panic("empty file")
 	}
-	results := make([]pb.Chunk, 0)
 	chunkCount := (filesize-1)/snapshotChunkSize + 1
-	for i := uint64(0); i < chunkCount; i++ {
+	results := make([]pb.Chunk, 0, chunkCount)
+	for i := range chunkCount {
 		var csz uint64
 		if i == chunkCount-1 {
 			csz = filesize - (chunkCount-1)*snapshotChunkSize
@@ -264,7 +264,7 @@ func getWitnessChunk(m pb.Message, fs vfs.IFS) ([]pb.Chunk, error) {
 	if err != nil {
 		return nil, err
 	}
-	results := make([]pb.Chunk, 0)
+	results := make([]pb.Chunk, 0, 1)
 	results = append(results, pb.Chunk{
 		BinVer:         raftio.TransportBinVersion,
 		ShardID:        m.ShardID,

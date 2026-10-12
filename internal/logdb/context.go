@@ -83,11 +83,11 @@ func (c *context) GetLastEntryBatch() pb.EntryBatch {
 	return c.lb
 }
 
-func (c *context) GetWriteBatch() interface{} {
+func (c *context) GetWriteBatch() any {
 	return c.wb
 }
 
-func (c *context) SetWriteBatch(wb interface{}) {
+func (c *context) SetWriteBatch(wb any) {
 	if c.wb != nil {
 		panic("c.wb is not nil")
 	}

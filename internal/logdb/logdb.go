@@ -68,9 +68,9 @@ type IContext interface {
 	// GetValueBuffer returns a byte buffer with at least sz bytes in length.
 	GetValueBuffer(sz uint64) []byte
 	// GetWriteBatch returns a write batch or transaction instance.
-	GetWriteBatch() interface{}
+	GetWriteBatch() any
 	// SetWriteBatch adds the write batch to the IContext instance.
-	SetWriteBatch(wb interface{})
+	SetWriteBatch(wb any)
 	// GetEntryBatch returns an entry batch instance.
 	GetEntryBatch() pb.EntryBatch
 	// GetLastEntryBatch returns an entry batch instance.

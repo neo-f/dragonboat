@@ -21,11 +21,11 @@ import (
 	"reflect"
 )
 
-func getParsedConfig(fn string) map[string]interface{} {
+func getParsedConfig(fn string) map[string]any {
 	if _, err := os.Stat(fn); os.IsNotExist(err) {
 		return nil
 	}
-	m := map[string]interface{}{}
+	m := map[string]any{}
 	b, err := os.ReadFile(filepath.Clean(fn))
 	if err != nil {
 		panic(err)
@@ -48,7 +48,7 @@ func overwriteSoftSettings(org *soft) {
 	overwriteSettings(cfg, rd)
 }
 
-func overwriteSettings(cfg map[string]interface{}, rd reflect.Value) {
+func overwriteSettings(cfg map[string]any, rd reflect.Value) {
 	for key, val := range cfg {
 		field := rd.FieldByName(key)
 		if field.IsValid() {

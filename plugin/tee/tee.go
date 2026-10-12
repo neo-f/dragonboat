@@ -24,8 +24,8 @@ import (
 // CreateTanPebbleLogDB creates a Tee LogDB backed by Tan and Pebble.
 func CreateTanPebbleLogDB(cfg config.NodeHostConfig, cb config.LogDBCallback,
 	dirs []string, wals []string) (raftio.ILogDB, error) {
-	ndirs := make([]string, 0)
-	nwals := make([]string, 0)
+	ndirs := make([]string, 0, len(dirs))
+	nwals := make([]string, 0, len(wals))
 	fs := cfg.Expert.FS
 	for _, v := range dirs {
 		ndirs = append(ndirs, fs.PathJoin(v, "tee-tan"))

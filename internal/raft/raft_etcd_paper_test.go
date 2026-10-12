@@ -35,7 +35,8 @@ package raft
 import (
 	"fmt"
 	"reflect"
-	"sort"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/lni/dragonboat/v4/logger"
@@ -119,16 +120,16 @@ func TestLeaderBcastBeat(t *testing.T) {
 	r := newTestRaft(1, []uint64{1, 2, 3}, 10, hi, NewTestLogDB())
 	r.becomeCandidate()
 	r.becomeLeader()
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		r.appendEntries([]pb.Entry{{Index: uint64(i) + 1}})
 	}
 
-	for i := 0; i < hi; i++ {
+	for range hi {
 		ne(r.tick(), t)
 	}
 
 	msgs := r.readMessages()
-	sort.Sort(messageSlice(msgs))
+	slices.SortFunc(msgs, compareMessages)
 	wmsgs := []pb.Message{
 		{From: 1, To: 2, Term: 1, Type: pb.Heartbeat},
 		{From: 1, To: 3, Term: 1, Type: pb.Heartbeat},
@@ -180,7 +181,7 @@ func testNonleaderStartElection(t *testing.T, state State) {
 		t.Errorf("vote for self = false, want true")
 	}
 	msgs := r.readMessages()
-	sort.Sort(messageSlice(msgs))
+	slices.SortFunc(msgs, compareMessages)
 	wmsgs := []pb.Message{
 		{From: 1, To: 2, Term: 2, Type: pb.RequestVote},
 		{From: 1, To: 3, Term: 2, Type: pb.RequestVote},
@@ -371,7 +372,7 @@ func testNonleadersElectionTimeoutNonconflict(t *testing.T, state State) {
 		rs[k] = newTestRaft(ids[k], ids, et, 1, NewTestLogDB())
 	}
 	conflicts := 0
-	for round := 0; round < 1000; round++ {
+	for range 1000 {
 		for _, r := range rs {
 			switch state {
 			case follower:
@@ -433,7 +434,7 @@ func TestLeaderCommitEntry(t *testing.T) {
 		t.Errorf("nextEnts = %+v, want %+v", g, wents)
 	}
 	msgs := r.readMessages()
-	sort.Sort(messageSlice(msgs))
+	slices.SortFunc(msgs, compareMessages)
 	for i, m := range msgs {
 		if w := uint64(i + 2); m.To != w {
 			t.Errorf("to = %x, want %x", m.To, w)
@@ -789,7 +790,7 @@ func TestVoteRequest(t *testing.T) {
 		}
 
 		msgs := r.readMessages()
-		sort.Sort(messageSlice(msgs))
+		slices.SortFunc(msgs, compareMessages)
 		if len(msgs) != 2 {
 			t.Fatalf("#%d: len(msg) = %d, want %d", j, len(msgs), 2)
 		}
@@ -919,7 +920,7 @@ func TestLeaderStartReplication(t *testing.T) {
 		{From: 1, To: 3, Term: 1, Type: pb.Replicate, LogIndex: li, LogTerm: 1, Entries: wents, Commit: li},
 	}
 	msgs := r.readMessages()
-	sort.Sort(messageSlice(msgs))
+	slices.SortFunc(msgs, compareMessages)
 	if !reflect.DeepEqual(msgs, wmsgs) {
 		t.Errorf("msgs = %+v, want %+v", msgs, wmsgs)
 	}
@@ -929,11 +930,9 @@ func TestLeaderStartReplication(t *testing.T) {
 	}
 }
 
-type messageSlice []pb.Message
-
-func (s messageSlice) Len() int           { return len(s) }
-func (s messageSlice) Less(i, j int) bool { return fmt.Sprint(s[i]) < fmt.Sprint(s[j]) }
-func (s messageSlice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+func compareMessages(a, b pb.Message) int {
+	return strings.Compare(fmt.Sprint(a), fmt.Sprint(b))
+}
 
 func commitNoopEntry(r *raft, s ILogDB) {
 	if r.state != leader {

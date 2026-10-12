@@ -51,7 +51,7 @@ func TestInMemLogSizeIsAccessible(t *testing.T) {
 
 func TestRateLimiterTick(t *testing.T) {
 	r := NewInMemRateLimiter(100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		r.Tick()
 		require.Equal(t, uint64(i+2), r.tick,
 			"tick %d, want %d", r.tick, i+2)
@@ -95,7 +95,7 @@ func TestGCRemoveOutOfDateFollowerState(t *testing.T) {
 	r.gc()
 	require.Equal(t, 3, len(r.followerSizes),
 		"count %d, want 3", len(r.followerSizes))
-	for i := uint64(0); i < gcTick; i++ {
+	for range gcTick {
 		r.Tick()
 	}
 	r.gc()
@@ -143,7 +143,7 @@ func TestRateNotLimitedWhenOutOfDateFollowerStateIsLimited(t *testing.T) {
 
 func TestNotEnabledRateLimitNeverLimitRates(t *testing.T) {
 	r := NewInMemRateLimiter(0)
-	for i := 0; i < 10000; i++ {
+	for range 10000 {
 		r.Increase(math.MaxUint64 / 2)
 		require.False(t, r.RateLimited(), "unexpectedly rate limited")
 	}

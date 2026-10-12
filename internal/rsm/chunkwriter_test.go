@@ -62,7 +62,7 @@ func getTestSSMeta() SSMeta {
 func TestChunkWriterCanBeWritten(t *testing.T) {
 	meta := getTestSSMeta()
 	cw := NewChunkWriter(&testSink{}, meta)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		data := make([]byte, ChunkSize)
 		_, err := cw.Write(data)
 		require.NoError(t, err, "failed to write the data")
@@ -98,7 +98,7 @@ func TestChunkWriterCanFailWrite(t *testing.T) {
 	meta := getTestSSMeta()
 	sink := &testSink{}
 	cw := NewChunkWriter(sink, meta)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		data := make([]byte, ChunkSize)
 		_, err := cw.Write(data)
 		require.NoError(t, err, "failed to write the data")
@@ -114,7 +114,7 @@ func TestChunkWriterCanBeStopped(t *testing.T) {
 	meta := getTestSSMeta()
 	sink := &testSink{}
 	cw := NewChunkWriter(sink, meta)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		data := make([]byte, ChunkSize)
 		_, err := cw.Write(data)
 		require.NoError(t, err, "failed to write the data")

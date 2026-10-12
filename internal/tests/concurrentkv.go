@@ -51,7 +51,7 @@ type ConcurrentKVTest struct {
 	ReplicaID        uint64
 	kvdata           unsafe.Pointer
 	externalFileTest bool
-	closed           uint32
+	closed           atomic.Uint32
 }
 
 // NewConcurrentKVTest creates and return a new KVTest object.
@@ -74,7 +74,7 @@ func NewConcurrentKVTest(shardID uint64, replicaID uint64) sm.IConcurrentStateMa
 }
 
 // Lookup performances local looks up for the sepcified data.
-func (s *ConcurrentKVTest) Lookup(key interface{}) (interface{}, error) {
+func (s *ConcurrentKVTest) Lookup(key any) (any, error) {
 	kvdata := (*kvdata)(atomic.LoadPointer(&(s.kvdata)))
 	query := string(key.([]byte))
 	v, ok := kvdata.kvs.Load(query)
@@ -86,7 +86,7 @@ func (s *ConcurrentKVTest) Lookup(key interface{}) (interface{}, error) {
 
 // Update updates the object using the specified committed raft entry.
 func (s *ConcurrentKVTest) Update(ents []sm.Entry) ([]sm.Entry, error) {
-	for i := 0; i < len(ents); i++ {
+	for i := range ents {
 		dataKv := &kvpb.PBKV{}
 		err := dataKv.Unmarshal(ents[i].Cmd)
 		if err != nil {
@@ -102,13 +102,13 @@ func (s *ConcurrentKVTest) Update(ents []sm.Entry) ([]sm.Entry, error) {
 }
 
 // PrepareSnapshot makes preparations for taking concurrent snapshot.
-func (s *ConcurrentKVTest) PrepareSnapshot() (interface{}, error) {
+func (s *ConcurrentKVTest) PrepareSnapshot() (any, error) {
 	p := (*kvdata)(atomic.LoadPointer(&(s.kvdata)))
 	data := &kvdata{
 		count: p.count,
 	}
 	data.junk = append(data.junk, p.junk...)
-	p.kvs.Range(func(k, v interface{}) bool {
+	p.kvs.Range(func(k, v any) bool {
 		key := k.(string)
 		val := v.(string)
 		data.kvs.Store(key, val)
@@ -119,7 +119,7 @@ func (s *ConcurrentKVTest) PrepareSnapshot() (interface{}, error) {
 
 // SaveSnapshot saves the current object state into a snapshot using the
 // specified io.Writer object.
-func (s *ConcurrentKVTest) SaveSnapshot(ctx interface{},
+func (s *ConcurrentKVTest) SaveSnapshot(ctx any,
 	w io.Writer,
 	fileCollection sm.ISnapshotFileCollection,
 	done <-chan struct{}) error {
@@ -143,7 +143,7 @@ func (s *ConcurrentKVTest) SaveSnapshot(ctx interface{},
 		Count:   ctxdata.count,
 		Junk:    ctxdata.junk,
 	}
-	ctxdata.kvs.Range(func(k, v interface{}) bool {
+	ctxdata.kvs.Range(func(k, v any) bool {
 		key := k.(string)
 		val := v.(string)
 		jsondata.KVStore[key] = val
@@ -201,7 +201,7 @@ func (s *ConcurrentKVTest) RecoverFromSnapshot(r io.Reader,
 
 // Close closes the IStateMachine instance
 func (s *ConcurrentKVTest) Close() error {
-	atomic.StoreUint32(&s.closed, 1)
+	s.closed.Store(1)
 	return nil
 }
 
@@ -212,7 +212,7 @@ func (s *ConcurrentKVTest) GetHash() (uint64, error) {
 		KVStore: make(map[string]string),
 		Count:   p.count,
 	}
-	p.kvs.Range(func(k, v interface{}) bool {
+	p.kvs.Range(func(k, v any) bool {
 		key := k.(string)
 		val := v.(string)
 		jsondata.KVStore[key] = val
@@ -231,5 +231,5 @@ func (s *ConcurrentKVTest) GetHash() (uint64, error) {
 }
 
 func (s *ConcurrentKVTest) isClosed() bool {
-	return atomic.LoadUint32(&s.closed) == 1
+	return s.closed.Load() == 1
 }

@@ -593,14 +593,14 @@ func (nh *NodeHost) SyncPropose(ctx context.Context,
 
 // SyncRead performs a synchronous linearizable read on the specified Raft
 // shard. The specified context parameter must have the timeout value set. The
-// query interface{} specifies what to query, it will be passed to the Lookup
+// query any specifies what to query, it will be passed to the Lookup
 // method of the IStateMachine or IOnDiskStateMachine after the system
 // determines that it is safe to perform the local read. It returns the query
 // result from the Lookup method or the error encountered.
 func (nh *NodeHost) SyncRead(ctx context.Context, shardID uint64,
-	query interface{}) (interface{}, error) {
+	query any) (any, error) {
 	v, err := nh.linearizableRead(ctx, shardID,
-		func(node *node) (interface{}, error) {
+		func(node *node) (any, error) {
 			data, err := node.sm.Lookup(query)
 			if errors.Is(err, rsm.ErrShardClosed) {
 				return nil, ErrShardClosed
@@ -652,7 +652,7 @@ type Membership struct {
 func (nh *NodeHost) SyncGetShardMembership(ctx context.Context,
 	shardID uint64) (*Membership, error) {
 	v, err := nh.linearizableRead(ctx, shardID,
-		func(node *node) (interface{}, error) {
+		func(node *node) (any, error) {
 			m := node.sm.GetMembership()
 			cm := func(input map[uint64]bool) map[uint64]struct{} {
 				result := make(map[uint64]struct{})
@@ -847,7 +847,7 @@ func (nh *NodeHost) ReadIndex(shardID uint64,
 // instance. ReadLocalNode is only allowed to be called after receiving a
 // RequestCompleted notification from the ReadIndex method.
 func (nh *NodeHost) ReadLocalNode(rs *RequestState,
-	query interface{}) (interface{}, error) {
+	query any) (any, error) {
 	if atomic.LoadInt32(&nh.closed) != 0 {
 		return nil, ErrClosed
 	}
@@ -865,7 +865,7 @@ func (nh *NodeHost) ReadLocalNode(rs *RequestState,
 
 // NAReadLocalNode is a no extra heap allocation variant of ReadLocalNode, it
 // uses byte slice as its input and output data to avoid extra heap allocations
-// caused by using interface{}. Users are recommended to use the ReadLocalNode
+// caused by using any. Users are recommended to use the ReadLocalNode
 // method unless performance is the top priority.
 //
 // As an optional feature of the state machine, NAReadLocalNode returns
@@ -892,7 +892,7 @@ var staleReadCalled uint32
 // StaleRead queries the specified Raft node directly without any
 // linearizability guarantee.
 func (nh *NodeHost) StaleRead(shardID uint64,
-	query interface{}) (interface{}, error) {
+	query any) (any, error) {
 	if atomic.LoadInt32(&nh.closed) != 0 {
 		return nil, ErrClosed
 	}
@@ -1441,7 +1441,7 @@ func (nh *NodeHost) queryRaftLog(shardID uint64,
 }
 
 func (nh *NodeHost) linearizableRead(ctx context.Context,
-	shardID uint64, f func(n *node) (interface{}, error)) (interface{}, error) {
+	shardID uint64, f func(n *node) (any, error)) (any, error) {
 	timeout, err := getTimeoutFromContext(ctx)
 	if err != nil {
 		return nil, err
@@ -1468,7 +1468,7 @@ func (nh *NodeHost) getShard(shardID uint64) (*node, bool) {
 func (nh *NodeHost) forEachShard(f func(uint64, *node) bool) uint64 {
 	nh.mu.RLock()
 	defer nh.mu.RUnlock()
-	nh.mu.shards.Range(func(k, v interface{}) bool {
+	nh.mu.shards.Range(func(k, v any) bool {
 		return f(k.(uint64), v.(*node))
 	})
 	return nh.mu.cci
@@ -1647,9 +1647,9 @@ func (nh *NodeHost) loadNodeHostID() error {
 
 func (nh *NodeHost) createPools() {
 	nh.requestPools = make([]*sync.Pool, requestPoolShards)
-	for i := uint64(0); i < requestPoolShards; i++ {
+	for i := range requestPoolShards {
 		p := &sync.Pool{}
-		p.New = func() interface{} {
+		p.New = func() any {
 			obj := &RequestState{}
 			obj.CompletedC = make(chan RequestResult, 1)
 			obj.pool = p

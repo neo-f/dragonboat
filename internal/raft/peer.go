@@ -40,7 +40,8 @@
 package raft
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 
 	"github.com/lni/dragonboat/v4/config"
 	"github.com/lni/dragonboat/v4/internal/server"
@@ -402,8 +403,8 @@ func checkLaunchRequest(config config.Config,
 }
 
 func bootstrap(r *raft, addresses []PeerAddress) {
-	sort.Slice(addresses, func(i, j int) bool {
-		return addresses[i].ReplicaID < addresses[j].ReplicaID
+	slices.SortFunc(addresses, func(a, b PeerAddress) int {
+		return cmp.Compare(a.ReplicaID, b.ReplicaID)
 	})
 	ents := make([]pb.Entry, len(addresses))
 	for i, peer := range addresses {

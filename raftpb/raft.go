@@ -183,7 +183,7 @@ func (b *Bootstrap) Validate(nodes map[uint64]string,
 }
 
 func checkFileSize(path string, size uint64, fs vfs.IFS) {
-	var er func(format string, args ...interface{})
+	var er func(format string, args ...any)
 	if panicOnSizeMismatch {
 		er = plog.Panicf
 	} else {

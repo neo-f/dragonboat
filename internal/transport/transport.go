@@ -510,7 +510,7 @@ func (t *Transport) processMessages(remoteHost string,
 func lazyFree(reqs []pb.Message,
 	mb pb.MessageBatch) ([]pb.Message, pb.MessageBatch) {
 	if lazyFreeCycle > 0 {
-		for i := 0; i < len(reqs); i++ {
+		for i := range reqs {
 			reqs[i].Entries = nil
 		}
 		mb.Requests = []pb.Message{}

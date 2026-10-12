@@ -210,7 +210,7 @@ type keyPool struct {
 
 func newLogDBKeyPool() *keyPool {
 	p := &sync.Pool{}
-	p.New = func() interface{} {
+	p.New = func() any {
 		return newKey(dataSize, p)
 	}
 	return &keyPool{pool: p}

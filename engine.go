@@ -139,7 +139,7 @@ func newWorkReady(count uint64) *workReady {
 		maps:        make([]*readyShard, count),
 		channels:    make([]chan struct{}, count),
 	}
-	for i := uint64(0); i < count; i++ {
+	for i := range count {
 		wr.channels[i] = make(chan struct{}, 1)
 		wr.maps[i] = newReadyShard()
 	}
@@ -349,7 +349,7 @@ func newWorkerPool(nh nodeLoader,
 		workerStopper: syncutil.NewStopper(),
 		poolStopper:   syncutil.NewStopper(),
 	}
-	for workerID := uint64(0); workerID < snapshotWorkerCount; workerID++ {
+	for workerID := range snapshotWorkerCount {
 		w.workers[workerID] = newSSWorker(workerID, w.workerStopper)
 	}
 	w.poolStopper.RunWorker(func() {
@@ -808,7 +808,7 @@ func newCloseWorkerPool(closeWorkerCount uint64) *closeWorkerPool {
 		poolStopper:   syncutil.NewStopper(),
 	}
 
-	for workerID := uint64(0); workerID < closeWorkerCount; workerID++ {
+	for workerID := range closeWorkerCount {
 		w.workers[workerID] = newCloseWorker(workerID, w.workerStopper)
 	}
 	w.poolStopper.RunWorker(func() {
@@ -1034,7 +1034,6 @@ func newExecEngine(nh nodeLoader, cfg config.EngineConfig, notifyCommit bool,
 		s.ec = make(chan error, 1)
 	}
 	for i := uint64(1); i <= cfg.ExecShards; i++ {
-		workerID := i
 		s.nodeStopper.RunWorker(func() {
 			if errorInjection {
 				defer func() {
@@ -1045,21 +1044,19 @@ func newExecEngine(nh nodeLoader, cfg config.EngineConfig, notifyCommit bool,
 					}
 				}()
 			}
-			s.stepWorkerMain(workerID)
+			s.stepWorkerMain(i)
 		})
 	}
 	if notifyCommit {
 		for i := uint64(1); i <= cfg.CommitShards; i++ {
-			commitWorkerID := i
 			s.commitStopper.RunWorker(func() {
-				s.commitWorkerMain(commitWorkerID)
+				s.commitWorkerMain(i)
 			})
 		}
 	}
 	for i := uint64(1); i <= cfg.ApplyShards; i++ {
-		applyWorkerID := i
 		s.taskStopper.RunWorker(func() {
-			s.applyWorkerMain(applyWorkerID)
+			s.applyWorkerMain(i)
 		})
 	}
 	return s

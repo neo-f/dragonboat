@@ -16,8 +16,7 @@ package dragonboat
 
 import (
 	"crypto/rand"
-	mathrand "math/rand"
-	"os"
+	mathrand "math/rand/v2"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -73,8 +72,7 @@ func benchmarkEncodedPayload(b *testing.B, ct dio.CompressionType, sz uint64) {
 	input := make([]byte, sz)
 	_, err := rand.Read(input)
 	require.NoError(b, err)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		rsm.GetEncoded(ct, input, nil)
 	}
 }
@@ -125,7 +123,7 @@ func benchmarkProposeN(b *testing.B, sz int) {
 	b.ReportAllocs()
 	data := make([]byte, sz)
 	p := &sync.Pool{}
-	p.New = func() interface{} {
+	p.New = func() any {
 		obj := &RequestState{}
 		obj.CompletedC = make(chan RequestResult, 1)
 		obj.pool = p
@@ -170,7 +168,7 @@ func BenchmarkPropose1024(b *testing.B) {
 func BenchmarkPendingProposalNextKey(b *testing.B) {
 	b.ReportAllocs()
 	p := &sync.Pool{}
-	p.New = func() interface{} {
+	p.New = func() any {
 		obj := &RequestState{}
 		obj.CompletedC = make(chan RequestResult, 1)
 		obj.pool = p
@@ -190,7 +188,7 @@ func BenchmarkPendingProposalNextKey(b *testing.B) {
 func BenchmarkReadIndexRead(b *testing.B) {
 	b.ReportAllocs()
 	p := &sync.Pool{}
-	p.New = func() interface{} {
+	p.New = func() any {
 		obj := &RequestState{}
 		obj.CompletedC = make(chan RequestResult, 1)
 		obj.pool = p
@@ -229,7 +227,7 @@ func benchmarkMarshalEntryN(b *testing.B, sz int) {
 		Cmd:         make([]byte, sz),
 	}
 	data := make([]byte, e.Size())
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		n, err := e.MarshalTo(data)
 		if n > len(data) {
 			b.Errorf("n > len(data)")
@@ -277,10 +275,7 @@ func BenchmarkFSyncLatency(b *testing.B) {
 	b.StopTimer()
 	l := logger.GetLogger("logdb")
 	l.SetLevel(logger.WARNING)
-	db := getNewTestDB("db", "lldb", vfs.DefaultFS)
-	defer func() {
-		require.NoError(b, os.RemoveAll(rdbTestDirectory))
-	}()
+	db := getNewTestDB(b.TempDir(), "db", "lldb", vfs.DefaultFS)
 	defer func() {
 		require.NoError(b, db.Close())
 	}()
@@ -312,10 +307,7 @@ func benchmarkSaveRaftState(b *testing.B, sz int) {
 	b.StopTimer()
 	l := logger.GetLogger("logdb")
 	l.SetLevel(logger.WARNING)
-	db := getNewTestDB("db", "lldb", vfs.DefaultFS)
-	defer func() {
-		require.NoError(b, os.RemoveAll(rdbTestDirectory))
-	}()
+	db := getNewTestDB(b.TempDir(), "db", "lldb", vfs.DefaultFS)
 	defer func() {
 		require.NoError(b, db.Close())
 	}()
@@ -344,7 +336,7 @@ func benchmarkSaveRaftState(b *testing.B, sz int) {
 			ReplicaID: 1,
 		}
 		iidx := e.Index
-		for i := uint64(0); i < 128; i++ {
+		for i := range uint64(128) {
 			e.Index = iidx + i
 			u.EntriesToSave = append(u.EntriesToSave, e)
 		}
@@ -468,7 +460,7 @@ func benchmarkTransport(b *testing.B, sz int) {
 			b.Fatalf("failed to stop the transport module %v", err)
 		}
 	}()
-	msgs := make([]pb.Message, 0)
+	msgs := make([]pb.Message, 0, 128)
 	e := pb.Entry{
 		Index:       12843560,
 		Term:        123,
@@ -479,7 +471,7 @@ func benchmarkTransport(b *testing.B, sz int) {
 		RespondedTo: 12843550,
 		Cmd:         make([]byte, sz),
 	}
-	for i := 0; i < 128; i++ {
+	for range 128 {
 		m := pb.Message{
 			Type:     pb.Replicate,
 			To:       2,
@@ -490,13 +482,13 @@ func benchmarkTransport(b *testing.B, sz int) {
 			LogIndex: 123456789,
 			Commit:   123456789,
 		}
-		for j := 0; j < 64; j++ {
+		for range 64 {
 			m.Entries = append(m.Entries, e)
 		}
 		msgs = append(msgs, m)
 	}
 	b.StartTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		handler1.reset()
 		for _, msg := range msgs {
 			t1.Send(msg)
@@ -526,7 +518,7 @@ func BenchmarkLookup(b *testing.B) {
 	nds := rsm.NewNativeSM(config, rsm.NewInMemStateMachine(ds), done)
 	input := make([]byte, 1)
 	b.StartTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		result, err := nds.Lookup(input)
 		if err != nil {
 			b.Fatalf("lookup failed %v", err)
@@ -546,7 +538,7 @@ func BenchmarkNALookup(b *testing.B) {
 	nds := rsm.NewNativeSM(config, rsm.NewInMemStateMachine(ds), done)
 	input := make([]byte, 1)
 	b.StartTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		result, err := nds.NALookup(input)
 		if err != nil {
 			b.Fatalf("lookup failed %v", err)
@@ -602,7 +594,7 @@ func benchmarkStateMachineStep(b *testing.B, sz int, noopSession bool) {
 	b.StartTimer()
 	for x := 0; x < b.N; x++ {
 		entries = entries[:0]
-		for i := uint64(0); i < 128; i++ {
+		for range uint64(128) {
 			idx++
 			e.Index = idx
 			entries = append(entries, e)
@@ -656,8 +648,7 @@ func BenchmarkChunkWriter(b *testing.B) {
 	require.NoError(b, err)
 	b.ReportAllocs()
 	b.SetBytes(sz)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		if _, err := cw.Write(data); err != nil {
 			b.Fatalf("failed to write %v", err)
 		}
@@ -675,8 +666,7 @@ func BenchmarkSnappyCompressedChunkWriter(b *testing.B) {
 	require.NoError(b, err)
 	b.ReportAllocs()
 	b.SetBytes(sz)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		if _, err := w.Write(data); err != nil {
 			b.Fatalf("failed to write %v", err)
 		}
@@ -709,7 +699,7 @@ func mustMarshalData(e pb.Entry) {
 func BenchmarkMarshal(b *testing.B) {
 	b.ReportAllocs()
 	e := pb.Entry{}
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		marshalData(e)
 	}
 }
@@ -717,7 +707,7 @@ func BenchmarkMarshal(b *testing.B) {
 func BenchmarkMustMarshal(b *testing.B) {
 	b.ReportAllocs()
 	e := pb.Entry{}
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		mustMarshalData(e)
 	}
 }

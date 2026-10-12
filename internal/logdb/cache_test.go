@@ -125,12 +125,12 @@ func TestChangeReturnedLastBatchWillNotAffectTheCache(t *testing.T) {
 	v, _ := c.getLastBatch(10, 2, pb.EntryBatch{})
 	require.Equal(t, 15, len(v.Entries), "unexpected entry count")
 
-	for i := uint64(0); i < uint64(15); i++ {
+	for i := range uint64(15) {
 		v.Entries[i].Term = 2
 	}
 
 	v2, _ := c.getLastBatch(10, 2, pb.EntryBatch{})
-	for i := uint64(0); i < uint64(15); i++ {
+	for i := range uint64(15) {
 		require.NotEqual(t, uint64(2), v2.Entries[i].Term,
 			"cache content changed")
 	}

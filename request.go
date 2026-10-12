@@ -18,7 +18,7 @@ import (
 	"crypto/sha512"
 	"encoding/binary"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -995,7 +995,7 @@ func getRng(shardID uint64, replicaID uint64, shard uint64) *keyGenerator {
 	fileutil.MustWrite(m, []byte(seedStr))
 	sum := m.Sum(nil)
 	seed := binary.LittleEndian.Uint64(sum)
-	return &keyGenerator{rand: rand.New(rand.NewSource(int64(seed)))}
+	return &keyGenerator{rand: rand.New(rand.NewPCG(seed, 0))}
 }
 
 func newPendingProposal(cfg config.Config,
@@ -1006,7 +1006,7 @@ func newPendingProposal(cfg config.Config,
 		keyg:   make([]*keyGenerator, ps),
 		ps:     ps,
 	}
-	for i := uint64(0); i < ps; i++ {
+	for i := range ps {
 		p.shards[i] = newPendingProposalShard(cfg, notifyCommit, pool, proposals)
 		p.keyg[i] = getRng(cfg.ShardID, cfg.ReplicaID, i)
 	}

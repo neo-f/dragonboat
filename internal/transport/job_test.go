@@ -15,7 +15,6 @@
 package transport
 
 import (
-	"context"
 	"testing"
 
 	"github.com/lni/goutils/syncutil"
@@ -30,7 +29,7 @@ func TestSnapshotJobCanBeCreatedInSavedMode(t *testing.T) {
 	fs := vfs.GetTestFS()
 	cfg := config.NodeHostConfig{}
 	transport := NewNOOPTransport(cfg, nil, nil)
-	c := newJob(context.Background(), 1, 1, 1, false, 201, transport, nil, fs)
+	c := newJob(t.Context(), 1, 1, 1, false, 201, transport, nil, fs)
 	require.Equal(t, 201, cap(c.ch), "unexpected chan length")
 }
 
@@ -38,7 +37,7 @@ func TestSnapshotJobCanBeCreatedInStreamingMode(t *testing.T) {
 	fs := vfs.GetTestFS()
 	cfg := config.NodeHostConfig{}
 	transport := NewNOOPTransport(cfg, nil, nil)
-	c := newJob(context.Background(), 1, 1, 1, true, 201, transport, nil, fs)
+	c := newJob(t.Context(), 1, 1, 1, true, 201, transport, nil, fs)
 	require.Equal(t, streamingChanLength, cap(c.ch), "unexpected chan length")
 }
 
@@ -53,7 +52,7 @@ func TestSendSavedSnapshotPutsAllChunksInCh(t *testing.T) {
 	chunks, err := splitSnapshotMessage(m, fs)
 	require.NoError(t, err, "failed to get chunks")
 	transport := NewNOOPTransport(config.NodeHostConfig{}, nil, nil)
-	c := newJob(context.Background(), 1, 1, 1, false, len(chunks),
+	c := newJob(t.Context(), 1, 1, 1, false, len(chunks),
 		transport, nil, fs)
 	require.Equal(t, len(chunks), cap(c.ch), "unexpected chan length")
 	c.addSnapshot(chunks)
@@ -64,7 +63,7 @@ func TestKeepSendingChunksUsingFailedJobWillNotBlock(t *testing.T) {
 	fs := vfs.GetTestFS()
 	cfg := config.NodeHostConfig{}
 	transport := NewNOOPTransport(cfg, nil, nil)
-	c := newJob(context.Background(), 1, 1, 1, true, 0, transport, nil, fs)
+	c := newJob(t.Context(), 1, 1, 1, true, 0, transport, nil, fs)
 	require.Equal(t, streamingChanLength, cap(c.ch), "unexpected chan length")
 	err := c.connect("a1")
 	require.NoError(t, err, "connect failed")
@@ -81,7 +80,7 @@ func TestKeepSendingChunksUsingFailedJobWillNotBlock(t *testing.T) {
 	require.False(t, stopped, "unexpectedly stopped")
 	stopper.Stop()
 	require.NotNil(t, perr, "error didn't return from process()")
-	for i := 0; i < streamingChanLength*10; i++ {
+	for range streamingChanLength * 10 {
 		c.AddChunk(pb.Chunk{})
 	}
 	select {
@@ -96,7 +95,7 @@ func testSpecialChunkCanStopTheProcessLoop(t *testing.T,
 	tt uint64, experr error, fs vfs.IFS) {
 	cfg := config.NodeHostConfig{}
 	transport := NewNOOPTransport(cfg, nil, nil)
-	c := newJob(context.Background(), 1, 1, 1, true, 0, transport, nil, fs)
+	c := newJob(t.Context(), 1, 1, 1, true, 0, transport, nil, fs)
 	err := c.connect("a1")
 	require.NoError(t, err, "connect failed")
 	stopper := syncutil.NewStopper()

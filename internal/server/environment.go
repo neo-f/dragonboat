@@ -136,8 +136,8 @@ func (env *Env) getSnapshotDirParts(did uint64,
 	pd := fmt.Sprintf("snapshot-part-%d", env.partitioner.GetPartitionID(shardID))
 	sd := fmt.Sprintf("snapshot-%d-%d", shardID, replicaID)
 	dir := env.nhConfig.NodeHostDir
-	parts := make([]string, 0)
-	toBeCreated := make([]string, 0)
+	parts := make([]string, 0, 5)
+	toBeCreated := make([]string, 0, 2)
 	return append(parts, dir, env.hostname, dd, pd, sd),
 		env.fs.PathJoin(dir, env.hostname, dd), append(toBeCreated, pd, sd)
 }

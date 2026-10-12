@@ -17,7 +17,7 @@ package logdb
 import (
 	"bytes"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -25,7 +25,7 @@ import (
 
 func TestEntryKeysOrdered(t *testing.T) {
 	p := newLogDBKeyPool()
-	for i := uint64(0); i < 65536+10; i++ {
+	for i := range uint64(65536 + 10) {
 		k1 := p.get()
 		k1.SetEntryKey(100, 100, i)
 		k2 := p.get()
@@ -53,7 +53,7 @@ func TestSnapshotKeysOrdered(t *testing.T) {
 
 func TestNodeInfoKeyCanBeParsed(t *testing.T) {
 	p := newLogDBKeyPool()
-	for i := 0; i < 1024; i++ {
+	for range 1024 {
 		k1 := p.get()
 		cid := rand.Uint64()
 		nid := rand.Uint64()

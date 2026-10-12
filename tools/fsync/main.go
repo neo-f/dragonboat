@@ -56,8 +56,8 @@ func main() {
 }
 
 func sequentialWrite() {
-	for i := 0; i < BATCH; i++ {
-		for j := 0; j < BUCKETS; j++ {
+	for range BATCH {
+		for range BUCKETS {
 			if _, err := fs[0].Write(data); err != nil {
 				panic(err)
 			}
@@ -77,7 +77,7 @@ func parallelWrite() {
 		wg.Add(1)
 		gf := f
 		go func() {
-			for i := 0; i < BATCH; i++ {
+			for range BATCH {
 				if _, err := gf.Write(data); err != nil {
 					panic(err)
 				}

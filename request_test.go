@@ -538,7 +538,7 @@ func TestConfigChangeCanExpire(t *testing.T) {
 	rs, err := pcc.request(cc, tickCount)
 	assert.NoError(t, err)
 
-	for i := uint64(0); i < tickCount; i++ {
+	for i := range tickCount {
 		pcc.tick(i)
 		pcc.gc()
 	}
@@ -667,7 +667,7 @@ func TestConfigChangeWithDifferentKeyWillNotBeDropped(t *testing.T) {
 func getPendingProposal(notifyCommit bool) (pendingProposal, *entryQueue) {
 	c := newEntryQueue(5, 0)
 	p := &sync.Pool{}
-	p.New = func() interface{} {
+	p.New = func() any {
 		obj := &RequestState{}
 		obj.pool = p
 		obj.CompletedC = make(chan RequestResult, 1)
@@ -869,7 +869,7 @@ func TestProposalCanBeExpired(t *testing.T) {
 	rs, err := pp.propose(getBlankTestSession(), []byte("test data"), tickCount)
 	require.NoError(t, err)
 
-	for i := uint64(0); i < tickCount; i++ {
+	for i := range tickCount {
 		pp.tick(i)
 		pp.gc()
 	}
@@ -894,7 +894,7 @@ func TestProposalCanBeExpired(t *testing.T) {
 
 func TestProposalErrorsAreReported(t *testing.T) {
 	pp, c := getPendingProposal(false)
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		_, err := pp.propose(getBlankTestSession(), []byte("test data"), 100)
 		assert.NoError(t, err)
 	}
@@ -947,7 +947,7 @@ func TestClosePendingProposalIgnoresStepEngineActivities(t *testing.T) {
 func getPendingReadIndex() (pendingReadIndex, *readIndexQueue) {
 	q := newReadIndexQueue(5)
 	p := &sync.Pool{}
-	p.New = func() interface{} {
+	p.New = func() any {
 		obj := &RequestState{}
 		obj.pool = p
 		obj.CompletedC = make(chan RequestResult, 1)
@@ -1002,7 +1002,7 @@ func TestPendingReadIndexCanRead(t *testing.T) {
 
 func TestPendingReadIndexCanReturnBusy(t *testing.T) {
 	pri, _ := getPendingReadIndex()
-	for i := 0; i < 6; i++ {
+	for i := range 6 {
 		_, err := pri.read(100)
 		if i < 5 {
 			assert.NoError(t, err)
@@ -1070,7 +1070,7 @@ func testPendingReadIndexCanExpire(t *testing.T, addReady bool) {
 	}
 
 	tickToWait := 100 + defaultGCTick + 1
-	for i := uint64(0); i < tickToWait; i++ {
+	for i := range tickToWait {
 		pp.tick(i)
 		pp.applied(499)
 	}
@@ -1102,7 +1102,7 @@ func TestNonEmptyReadBatchIsNeverExpired(t *testing.T) {
 	require.Len(t, pp.batches, 1)
 
 	tickToWait := defaultGCTick * 10
-	for i := uint64(0); i < tickToWait; i++ {
+	for i := range tickToWait {
 		pp.tick(i)
 		pp.applied(499)
 	}
@@ -1113,7 +1113,7 @@ func TestProposalAllocationCount(t *testing.T) {
 	sz := 128
 	data := make([]byte, sz)
 	p := &sync.Pool{}
-	p.New = func() interface{} {
+	p.New = func() any {
 		obj := &RequestState{}
 		obj.CompletedC = make(chan RequestResult, 1)
 		obj.pool = p
@@ -1141,7 +1141,7 @@ func TestProposalAllocationCount(t *testing.T) {
 
 func TestReadIndexAllocationCount(t *testing.T) {
 	p := &sync.Pool{}
-	p.New = func() interface{} {
+	p.New = func() any {
 		obj := &RequestState{}
 		obj.CompletedC = make(chan RequestResult, 1)
 		obj.pool = p

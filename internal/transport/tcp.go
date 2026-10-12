@@ -203,12 +203,7 @@ func readMessage(conn net.Conn,
 		buf = rbuf[:rheader.size]
 	}
 	received := uint64(0)
-	var recvBuf []byte
-	if rheader.size < recvBufSize {
-		recvBuf = buf[:rheader.size]
-	} else {
-		recvBuf = buf[:recvBufSize]
-	}
+	recvBuf := buf[:min(rheader.size, recvBufSize)]
 	toRead := rheader.size
 	for toRead > 0 {
 		tt = time.Now().Add(readDuration)
@@ -220,11 +215,7 @@ func readMessage(conn net.Conn,
 		}
 		toRead -= uint64(len(recvBuf))
 		received += uint64(len(recvBuf))
-		if toRead < recvBufSize {
-			recvBuf = buf[received : received+toRead]
-		} else {
-			recvBuf = buf[received : received+recvBufSize]
-		}
+		recvBuf = buf[received : received+min(toRead, recvBufSize)]
 	}
 	if received != rheader.size {
 		panic("unexpected size")
@@ -434,19 +425,16 @@ func (t *TCP) Start() error {
 				}
 				panic(err)
 			}
-			var once sync.Once
 			connCloseCh := make(chan struct{})
-			closeFn := func() {
-				once.Do(func() {
-					select {
-						case connCloseCh <- struct{}{}:
-						default:
-					}
-					if err := conn.Close(); err != nil {
-						plog.Errorf("failed to close the connection %v", err)
-					}
-				})
-			}
+			closeFn := sync.OnceFunc(func() {
+				select {
+				case connCloseCh <- struct{}{}:
+				default:
+				}
+				if err := conn.Close(); err != nil {
+					plog.Errorf("failed to close the connection %v", err)
+				}
+			})
 			t.connStopper.RunWorker(func() {
 				select {
 				case <-t.stopper.ShouldStop():

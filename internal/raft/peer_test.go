@@ -513,7 +513,7 @@ func TestRaftAPILaunch(t *testing.T) {
 	wants := []pb.Update{
 		{
 			ReplicaID: 1,
-			State:     pb.State{Term: 1, Commit: 1, Vote: 0},
+			Term:      1, Commit: 1, Vote: 0,
 			EntriesToSave: []pb.Entry{
 				{Type: pb.ConfigChangeEntry, Term: 1, Index: 1, Cmd: ccdata},
 			},
@@ -524,8 +524,8 @@ func TestRaftAPILaunch(t *testing.T) {
 			LeaderUpdate: pb.LeaderUpdate{LeaderID: 0, Term: 1},
 		},
 		{
-			ReplicaID:        1,
-			State:            pb.State{Term: 2, Commit: 3, Vote: 1},
+			ReplicaID: 1,
+			Term:      2, Commit: 3, Vote: 1,
 			EntriesToSave:    []pb.Entry{{Term: 2, Index: 3, Cmd: []byte("foo")}},
 			CommittedEntries: []pb.Entry{{Term: 2, Index: 3, Cmd: []byte("foo")}},
 			UpdateCommit:     pb.UpdateCommit{Processed: 3, StableLogTo: 3, StableLogTerm: 2},
@@ -722,7 +722,7 @@ func TestCheckLaunchRequest(t *testing.T) {
 	expectPanicFn(func() {
 		checkLaunchRequest(config.Config{ReplicaID: 1}, nil, true, true)
 	})
-	addr := make([]PeerAddress, 0)
+	addr := make([]PeerAddress, 0, 2)
 	addr = append(addr, PeerAddress{Address: "1"})
 	addr = append(addr, PeerAddress{Address: "1"})
 	expectPanicFn(func() {
@@ -749,9 +749,8 @@ func TestValidateUpdate(t *testing.T) {
 		{0, 1, 2, 0, 0, false},
 	}
 	for idx, tt := range tests {
-		tidx := idx
-		ud := pb.Update{}
-		ud.Commit = tt.commit
+		ud := pb.Update{
+			Commit: tt.commit}
 		if tt.committedLength > 0 {
 			lastIndex := tt.firstCommittedIndex + tt.committedLength - 1
 			for i := tt.firstCommittedIndex; i <= lastIndex; i++ {
@@ -774,7 +773,7 @@ func TestValidateUpdate(t *testing.T) {
 			if tt.panic {
 				defer func() {
 					if r := recover(); r == nil {
-						t.Fatalf("%d, failed to panic", tidx)
+						t.Fatalf("%d, failed to panic", idx)
 					}
 				}()
 			}
@@ -806,7 +805,6 @@ func TestSetFastApply(t *testing.T) {
 	}
 
 	for idx, tt := range tests {
-		tidx := idx
 		ud := pb.Update{FastApply: true}
 		if tt.hasSnapshot {
 			ud.Snapshot = pb.Snapshot{
@@ -833,7 +831,7 @@ func TestSetFastApply(t *testing.T) {
 		}
 		ud = setFastApply(ud)
 		if ud.FastApply != tt.fastApply {
-			t.Fatalf("%d, fast apply not expected", tidx)
+			t.Fatalf("%d, fast apply not expected", idx)
 		}
 	}
 }

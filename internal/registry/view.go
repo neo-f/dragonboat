@@ -18,7 +18,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/gob"
-	"math/rand"
+	"math/rand/v2"
 	"sync"
 
 	"github.com/pierrec/lz4/v4"
@@ -74,7 +74,7 @@ type ShardView struct {
 }
 
 func toShardViewList(input []ShardInfo) []ShardView {
-	result := make([]ShardView, 0)
+	result := make([]ShardView, 0, len(input))
 	for _, ci := range input {
 		cv := ShardView{
 			ShardID:           ci.ShardID,

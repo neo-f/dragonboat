@@ -17,6 +17,7 @@ package fileutil
 import (
 	"archive/tar"
 	"bytes"
+	"cmp"
 	"compress/bzip2"
 	"crypto/md5"
 	"fmt"
@@ -197,7 +198,7 @@ func getHash(data []byte) []byte {
 func CreateFlagFile(dir string,
 	filename string, msg pb.Marshaler, fs vfs.IFS) (err error) {
 	fp := fs.PathJoin(dir, filename)
-	f, err := fs.Create(fp)
+	f, err := fs.Create(fp, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		return err
 	}
@@ -287,7 +288,7 @@ func ExtractTarBz2(bz2fn string, toDir string, fs vfs.IFS) (err error) {
 	tarReader := tar.NewReader(ts)
 	for {
 		header, err := tarReader.Next()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return nil
 		}
 		if err != nil {
@@ -302,7 +303,7 @@ func ExtractTarBz2(bz2fn string, toDir string, fs vfs.IFS) (err error) {
 		case tar.TypeReg:
 			if err := func() error {
 				fp := fs.PathJoin(toDir, header.Name)
-				nf, err := fs.Create(fp)
+				nf, err := fs.Create(fp, vfs.WriteCategoryUnspecified)
 				if err != nil {
 					return err
 				}
@@ -326,7 +327,6 @@ func ExtractTarBz2(bz2fn string, toDir string, fs vfs.IFS) (err error) {
 // Copyright 2010 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
-//
 var rand uint32
 var randmu sync.Mutex
 
@@ -364,16 +364,11 @@ func TempFile(dir,
 			}
 		}
 	}
-	var prefix, suffix string
-	if pos := strings.LastIndex(pattern, "*"); pos != -1 {
-		prefix, suffix = pattern[:pos], pattern[pos+1:]
-	} else {
-		prefix = pattern
-	}
+	prefix, suffix, _ := strings.CutLast(pattern, "*")
 	nconflict := 0
-	for i := 0; i < 10000; i++ {
+	for range 10000 {
 		name = fs.PathJoin(dir, prefix+nextRandom()+suffix)
-		f, err = fs.Create(name)
+		f, err = fs.Create(name, vfs.WriteCategoryUnspecified)
 		if vfs.IsExist(err) {
 			if nconflict++; nconflict > 10 {
 				randmu.Lock()
@@ -396,11 +391,7 @@ func prefixAndSuffix(pattern string) (prefix, suffix string, err error) {
 		err = errPatternHasSeparator
 		return
 	}
-	if pos := strings.LastIndex(pattern, "*"); pos != -1 {
-		prefix, suffix = pattern[:pos], pattern[pos+1:]
-	} else {
-		prefix = pattern
-	}
+	prefix, suffix, _ = strings.CutLast(pattern, "*")
 	return
 }
 
@@ -414,9 +405,7 @@ func prefixAndSuffix(pattern string) (prefix, suffix string, err error) {
 // will not choose the same directory. It is the caller's responsibility
 // to remove the directory when no longer needed.
 func TempDir(dir, pattern string, fs vfs.IFS) (name string, err error) {
-	if dir == "" {
-		dir = os.TempDir()
-	}
+	dir = cmp.Or(dir, os.TempDir())
 
 	prefix, suffix, err := prefixAndSuffix(pattern)
 	if err != nil {
@@ -424,7 +413,7 @@ func TempDir(dir, pattern string, fs vfs.IFS) (name string, err error) {
 	}
 
 	nconflict := 0
-	for i := 0; i < 10000; i++ {
+	for range 10000 {
 		try := fs.PathJoin(dir, prefix+nextRandom()+suffix)
 		err = fs.MkdirAll(try, 0700)
 		if oserror.IsExist(err) {

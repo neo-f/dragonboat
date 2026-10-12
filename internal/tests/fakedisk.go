@@ -80,14 +80,14 @@ func (f *FakeDiskSM) Update(ents []sm.Entry) ([]sm.Entry, error) {
 }
 
 // Lookup queries the state machine.
-func (f *FakeDiskSM) Lookup(query interface{}) (interface{}, error) {
+func (f *FakeDiskSM) Lookup(query any) (any, error) {
 	result := make([]byte, 8)
 	binary.LittleEndian.PutUint64(result, f.count)
 	return result, nil
 }
 
 // PrepareSnapshot prepares snapshotting.
-func (f *FakeDiskSM) PrepareSnapshot() (interface{}, error) {
+func (f *FakeDiskSM) PrepareSnapshot() (any, error) {
 	pit := &FakeDiskSM{initialApplied: f.initialApplied, count: f.count}
 	return pit, nil
 }
@@ -98,7 +98,7 @@ func (f *FakeDiskSM) Sync() error {
 }
 
 // SaveSnapshot saves the state to a snapshot.
-func (f *FakeDiskSM) SaveSnapshot(ctx interface{},
+func (f *FakeDiskSM) SaveSnapshot(ctx any,
 	w io.Writer, stopc <-chan struct{}) error {
 	if !f.aborted {
 		f.aborted = true
@@ -148,7 +148,7 @@ func (f *FakeDiskSM) GetHash() (uint64, error) {
 // SimDiskSM is a fake disk based state machine used for testing purposes
 type SimDiskSM struct {
 	applied   uint64
-	recovered uint64
+	recovered atomic.Uint64
 }
 
 // NewSimDiskSM ...
@@ -163,7 +163,7 @@ func (s *SimDiskSM) GetApplied() uint64 {
 
 // GetRecovered ...
 func (s *SimDiskSM) GetRecovered() uint64 {
-	return atomic.LoadUint64(&s.recovered)
+	return s.recovered.Load()
 }
 
 // Open ...
@@ -181,19 +181,19 @@ func (s *SimDiskSM) Update(ents []sm.Entry) ([]sm.Entry, error) {
 }
 
 // Lookup ...
-func (s *SimDiskSM) Lookup(query interface{}) (interface{}, error) {
+func (s *SimDiskSM) Lookup(query any) (any, error) {
 	result := s.applied
 	return result, nil
 }
 
 // PrepareSnapshot ...
-func (s *SimDiskSM) PrepareSnapshot() (interface{}, error) {
+func (s *SimDiskSM) PrepareSnapshot() (any, error) {
 	v := &SimDiskSM{applied: s.applied}
 	return v, nil
 }
 
 // SaveSnapshot ...
-func (s *SimDiskSM) SaveSnapshot(ctx interface{},
+func (s *SimDiskSM) SaveSnapshot(ctx any,
 	w io.Writer, stopc <-chan struct{}) error {
 	pit := ctx.(*SimDiskSM)
 	v := make([]byte, 8)
@@ -205,7 +205,7 @@ func (s *SimDiskSM) SaveSnapshot(ctx interface{},
 // RecoverFromSnapshot ...
 func (s *SimDiskSM) RecoverFromSnapshot(r io.Reader,
 	stopc <-chan struct{}) error {
-	atomic.AddUint64(&s.recovered, 1)
+	s.recovered.Add(1)
 	v := make([]byte, 8)
 	if _, err := io.ReadFull(r, v); err != nil {
 		return err

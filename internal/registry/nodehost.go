@@ -14,6 +14,8 @@
 
 package registry
 
+import "maps"
+
 // NodeHostRegistry is a NodeHost info registry backed by gossip.
 type NodeHostRegistry struct {
 	store *metaStore
@@ -48,8 +50,6 @@ func (r *NodeHostRegistry) GetShardInfo(shardID uint64) (ShardView, bool) {
 	}
 	result := ci
 	result.Replicas = make(map[uint64]string)
-	for shardID, target := range ci.Replicas {
-		result.Replicas[shardID] = target
-	}
+	maps.Copy(result.Replicas, ci.Replicas)
 	return result, true
 }

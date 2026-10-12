@@ -255,21 +255,21 @@ func TestEntryBatchSizeUpperLimit(t *testing.T) {
 	}
 	require.LessOrEqual(t, eb.Size(), eb.SizeUpperLimit())
 
-	for i := 0; i < 1024; i++ {
+	for range 1024 {
 		eb.Entries = append(eb.Entries, e1)
 	}
 	require.LessOrEqual(t, eb.Size(), eb.SizeUpperLimit())
 
 	e1.Cmd = nil
 	eb.Entries = make([]Entry, 0)
-	for i := 0; i < 1024; i++ {
+	for range 1024 {
 		eb.Entries = append(eb.Entries, e1)
 	}
 	require.LessOrEqual(t, eb.Size(), eb.SizeUpperLimit())
 
 	e2 := Entry{}
 	eb.Entries = make([]Entry, 0)
-	for i := 0; i < 1024; i++ {
+	for range 1024 {
 		eb.Entries = append(eb.Entries, e2)
 	}
 	require.LessOrEqual(t, eb.Size(), eb.SizeUpperLimit())
@@ -300,7 +300,7 @@ func getMaxSizedMsg() Message {
 		RespondedTo: max64,
 		Cmd:         make([]byte, 1024),
 	}
-	for i := 0; i < 1024; i++ {
+	for range 1024 {
 		msg.Entries = append(msg.Entries, e1)
 	}
 	msg.Snapshot.Filepath = "longfilepathisherexxxxxxxxxxxxxxxxx"
@@ -327,7 +327,7 @@ func TestMessageBatchSizeUpperLimit(t *testing.T) {
 		BinVer:        max32,
 		SourceAddress: "longaddressisherexxxxxxxxxxxxxxxxxxxxxxxxx",
 	}
-	for i := 0; i < 1024; i++ {
+	for range 1024 {
 		mb.Requests = append(mb.Requests, msg)
 	}
 	require.LessOrEqual(t, mb.Size(), mb.SizeUpperLimit())

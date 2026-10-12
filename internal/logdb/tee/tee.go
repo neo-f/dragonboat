@@ -15,9 +15,10 @@
 package tee
 
 import (
+	"cmp"
 	"path/filepath"
 	"reflect"
-	"sort"
+	"slices"
 	"sync"
 
 	"github.com/cockroachdb/errors"
@@ -73,8 +74,8 @@ func NewPebbleLogDB(nhConfig config.NodeHostConfig,
 func newKVLogDB(nhConfig config.NodeHostConfig,
 	cb config.LogDBCallback, dirs []string, wals []string,
 	subdir string, f kv.Factory) (raftio.ILogDB, error) {
-	ndirs := make([]string, 0)
-	nwals := make([]string, 0)
+	ndirs := make([]string, 0, len(dirs))
+	nwals := make([]string, 0, len(wals))
 	for _, v := range dirs {
 		ndirs = append(ndirs, filepath.Join(v, subdir))
 	}
@@ -144,17 +145,17 @@ func (t *LogDB) ListNodeInfo() ([]raftio.NodeInfo, error) {
 	if oe != nil {
 		return nil, oe
 	}
-	sort.Slice(o, func(i, j int) bool {
-		if o[i].ShardID == o[j].ShardID {
-			return o[i].ReplicaID < o[j].ReplicaID
-		}
-		return o[i].ShardID < o[j].ShardID
+	slices.SortFunc(o, func(a, b raftio.NodeInfo) int {
+		return cmp.Or(
+			cmp.Compare(a.ShardID, b.ShardID),
+			cmp.Compare(a.ReplicaID, b.ReplicaID),
+		)
 	})
-	sort.Slice(n, func(i, j int) bool {
-		if n[i].ShardID == n[j].ShardID {
-			return n[i].ReplicaID < n[j].ReplicaID
-		}
-		return n[i].ShardID < n[j].ShardID
+	slices.SortFunc(n, func(a, b raftio.NodeInfo) int {
+		return cmp.Or(
+			cmp.Compare(a.ShardID, b.ShardID),
+			cmp.Compare(a.ReplicaID, b.ReplicaID),
+		)
 	})
 	if !reflect.DeepEqual(o, n) {
 		plog.Panicf("conflict NodeInfo list, %+v, %+v", o, n)

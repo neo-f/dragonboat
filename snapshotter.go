@@ -149,7 +149,7 @@ func (s *snapshotter) Save(savable rsm.ISavable,
 func (s *snapshotter) Load(ss pb.Snapshot,
 	sessions rsm.ILoadable, asm rsm.IRecoverable) (err error) {
 	fp := s.getFilePath(ss.Index)
-	fs := make([]sm.SnapshotFile, 0)
+	fs := make([]sm.SnapshotFile, 0, len(ss.Files))
 	for _, f := range ss.Files {
 		fs = append(fs, sm.SnapshotFile{
 			FileID:   f.FileId,

@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"hash/crc32"
 	"io"
 	"testing"
@@ -42,7 +43,7 @@ func TestRandomBlocksAreRejected(t *testing.T) {
 }
 
 func TestCorruptedBlockIsRejected(t *testing.T) {
-	v := make([]byte, 1023)
+	v := make([]byte, 1023, 1023+checksumSize)
 	_, err := rand.Read(v)
 	require.NoError(t, err)
 	h := GetDefaultChecksum()
@@ -56,7 +57,7 @@ func TestCorruptedBlockIsRejected(t *testing.T) {
 
 func TestWellFormedBlocksAreAccepted(t *testing.T) {
 	for i := 1; i < 128; i++ {
-		v := make([]byte, i*128)
+		v := make([]byte, i*128, i*128+int(checksumSize))
 		_, err := rand.Read(v)
 		require.NoError(t, err)
 		h := getDefaultChecksum()
@@ -87,7 +88,7 @@ func TestWellFormedDataCanPassV2Validator(t *testing.T) {
 		require.NoError(t, err)
 		err = w.Close()
 		require.NoError(t, err)
-		header := make([]byte, HeaderSize)
+		header := make([]byte, HeaderSize, HeaderSize+uint64(len(buf.Bytes())))
 		data := append(header, buf.Bytes()...)
 		validator := newV2Validator(getDefaultChecksum())
 		require.True(t, validator.AddChunk(data, 0))
@@ -127,7 +128,7 @@ func testCorruptedDataCanBeDetectedByValidator(t *testing.T,
 		require.NoError(t, err)
 		payload := buf.Bytes()
 		payload = corruptFn(payload)
-		header := make([]byte, HeaderSize)
+		header := make([]byte, HeaderSize, HeaderSize+uint64(len(payload)))
 		data := append(header, payload...)
 		vf := func(data []byte) bool {
 			validator := newV2Validator(getDefaultChecksum())
@@ -304,7 +305,7 @@ func TestBlockReaderCanReadData(t *testing.T) {
 					require.NoError(t, err)
 				}
 				allRead = append(allRead, curRead[:n]...)
-				if err == io.EOF {
+				if errors.Is(err, io.EOF) {
 					break
 				}
 			}
@@ -335,7 +336,7 @@ func TestBlockReaderPanicOnCorruptedBlock(t *testing.T) {
 	require.Equal(t, uint64(n), sz)
 	require.NoError(t, err)
 	require.NoError(t, writer.Close())
-	written := append([]byte{}, buf.Bytes()...)
+	written := bytes.Clone(buf.Bytes())
 	for idx := 0; idx < len(written)-16; idx++ {
 		func() {
 			curRead := make([]byte, 4)
@@ -349,7 +350,7 @@ func TestBlockReaderPanicOnCorruptedBlock(t *testing.T) {
 					if err != nil && err != io.EOF {
 						require.NoError(t, err)
 					}
-					if err == io.EOF {
+					if errors.Is(err, io.EOF) {
 						break
 					}
 				}

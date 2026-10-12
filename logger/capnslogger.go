@@ -55,22 +55,22 @@ func (c *capnsLog) SetLevel(level LogLevel) {
 	c.logger.SetLevel(cl)
 }
 
-func (c *capnsLog) Debugf(format string, args ...interface{}) {
+func (c *capnsLog) Debugf(format string, args ...any) {
 	c.logger.Debugf(format, args...)
 }
 
-func (c *capnsLog) Infof(format string, args ...interface{}) {
+func (c *capnsLog) Infof(format string, args ...any) {
 	c.logger.Infof(format, args...)
 }
 
-func (c *capnsLog) Warningf(format string, args ...interface{}) {
+func (c *capnsLog) Warningf(format string, args ...any) {
 	c.logger.Warningf(format, args...)
 }
 
-func (c *capnsLog) Errorf(format string, args ...interface{}) {
+func (c *capnsLog) Errorf(format string, args ...any) {
 	c.logger.Errorf(format, args...)
 }
 
-func (c *capnsLog) Panicf(format string, args ...interface{}) {
+func (c *capnsLog) Panicf(format string, args ...any) {
 	c.logger.Panicf(format, args...)
 }

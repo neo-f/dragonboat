@@ -74,7 +74,7 @@ func TestSessionSaveOrderWithEviction(t *testing.T) {
 	assert.Equal(t, s1.Bytes(), s2.Bytes(), "different snapshot")
 	check := func(c *cache.OrderedCache) {
 		keys := make(map[uint64]struct{})
-		c.OrderedDo(func(k, v interface{}) {
+		c.OrderedDo(func(k, v any) {
 			clientID := k.(*RaftClientID)
 			keys[uint64(*clientID)] = struct{}{}
 		})

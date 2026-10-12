@@ -29,7 +29,7 @@ func countConfigChange(entries []pb.Entry) int {
 }
 
 func newEntrySlice(ents []pb.Entry) []pb.Entry {
-	var n []pb.Entry
+	n := make([]pb.Entry, 0, len(ents))
 	return append(n, ents...)
 }
 
@@ -60,20 +60,6 @@ func limitSize(ents []pb.Entry, limit uint64) []pb.Entry {
 		}
 	}
 	return ents[:inc]
-}
-
-func min(x uint64, y uint64) uint64 {
-	if x > y {
-		return y
-	}
-	return x
-}
-
-func max(x uint64, y uint64) uint64 {
-	if x > y {
-		return x
-	}
-	return y
 }
 
 func getEntrySliceInMemSize(ents []pb.Entry) uint64 {

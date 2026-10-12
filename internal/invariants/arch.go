@@ -16,6 +16,7 @@ package invariants
 
 import (
 	"runtime"
+	"slices"
 )
 
 // Is32BitArch returns a boolean value indicating whether running on a 32bit
@@ -31,12 +32,7 @@ func IsSupportedArch() bool {
 		"arm64",
 		"amd64",
 	}
-	for _, v := range supported {
-		if runtime.GOARCH == v {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(supported, runtime.GOARCH)
 }
 
 // IsSupportedOS returns a boolean value indicating whether running on a
@@ -60,10 +56,5 @@ func is32BitArch(arch string) bool {
 		"s390",
 		"sparc",
 	}
-	for _, v := range known {
-		if arch == v {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(known, arch)
 }

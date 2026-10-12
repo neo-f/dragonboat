@@ -51,9 +51,7 @@ func (pe *plainEntries) record(wb kv.IWriteBatch,
 		k := ctx.GetKey()
 		k.SetEntryKey(shardID, replicaID, ent.Index)
 		wb.Put(k.Key(), data)
-		if ent.Index > maxIndex {
-			maxIndex = ent.Index
-		}
+		maxIndex = max(maxIndex, ent.Index)
 		idx++
 	}
 	return maxIndex

@@ -15,6 +15,7 @@
 package rsm
 
 import (
+	"maps"
 	"testing"
 
 	pb "github.com/lni/dragonboat/v4/raftpb"
@@ -273,12 +274,8 @@ func TestIsAddingExistingMember(t *testing.T) {
 	}
 	for idx, tt := range tests {
 		o := newMembership(1, 2, true)
-		for i, v := range tt.addrs {
-			o.members.Addresses[i] = v
-		}
-		for i, v := range tt.nonVotings {
-			o.members.NonVotings[i] = v
-		}
+		maps.Copy(o.members.Addresses, tt.addrs)
+		maps.Copy(o.members.NonVotings, tt.nonVotings)
 		cc := pb.ConfigChange{
 			Type:      tt.t,
 			Address:   tt.addr,
@@ -309,9 +306,7 @@ func TestIsPromotingNonVoting(t *testing.T) {
 	}
 	for idx, tt := range tests {
 		o := newMembership(1, 2, true)
-		for i, v := range tt.nonVotings {
-			o.members.NonVotings[i] = v
-		}
+		maps.Copy(o.members.NonVotings, tt.nonVotings)
 		cc := pb.ConfigChange{
 			Type:      tt.t,
 			Address:   tt.addr,
@@ -342,9 +337,7 @@ func TestIsInvalidNonVotingPromotion(t *testing.T) {
 	}
 	for idx, tt := range tests {
 		o := newMembership(1, 2, true)
-		for i, v := range tt.nonVotings {
-			o.members.NonVotings[i] = v
-		}
+		maps.Copy(o.members.NonVotings, tt.nonVotings)
 		cc := pb.ConfigChange{
 			Type:      tt.t,
 			Address:   tt.addr,
