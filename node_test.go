@@ -17,8 +17,8 @@ package dragonboat
 import (
 	"context"
 	"fmt"
-	"math/rand"
-	"sort"
+	"math/rand/v2"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -45,17 +45,16 @@ import (
 )
 
 const (
-	raftTestTopDir            = "raft_node_test_safe_to_delete"
-	logdbDir                  = "logdb_test_dir_safe_to_delete"
-	lowLatencyLogDBDir        = "logdb_ll_test_dir_safe_to_delete"
-	snapDir                   = "snap_test_dir_safe_to_delete/snap-%d-%d"
+	logdbDir                  = "logdb_test_dir"
+	lowLatencyLogDBDir        = "logdb_ll_test_dir"
+	snapDir                   = "snap-%d-%d"
 	testShardID        uint64 = 1100
 	tickMillisecond    uint64 = 50
 )
 
 func getMemberNodes(r *rsm.StateMachine) []uint64 {
 	m := r.GetMembership()
-	n := make([]uint64, 0)
+	n := make([]uint64, 0, len(m.Addresses))
 	for nid := range m.Addresses {
 		n = append(n, nid)
 	}
@@ -145,15 +144,9 @@ func (r *testRouter) addQ(replicaID uint64, q *server.MessageQueue) {
 	r.qm[replicaID] = q
 }
 
-func cleanupTestDir(fs vfs.IFS) {
-	if err := fs.RemoveAll(raftTestTopDir); err != nil {
-		panic(err)
-	}
-}
-
-func getTestRaftNodes(count int, ordered bool,
+func getTestRaftNodes(testDir string, count int, ordered bool,
 	fs vfs.IFS) ([]*node, []*rsm.StateMachine, *testRouter, raftio.ILogDB) {
-	return doGetTestRaftNodes(1, count, ordered, nil, fs)
+	return doGetTestRaftNodes(testDir, 1, count, ordered, nil, fs)
 }
 
 type dummyEngine struct {
@@ -167,7 +160,7 @@ func (d *dummyEngine) setStreamReady(shardID uint64)  {}
 func (d *dummyEngine) setSaveReady(shardID uint64)    {}
 func (d *dummyEngine) setRecoverReady(shardID uint64) {}
 
-func doGetTestRaftNodes(startID uint64, count int, ordered bool,
+func doGetTestRaftNodes(testDir string, startID uint64, count int, ordered bool,
 	ldb raftio.ILogDB, fs vfs.IFS) ([]*node, []*rsm.StateMachine,
 	*testRouter, raftio.ILogDB) {
 	nodes := make([]*node, 0)
@@ -182,7 +175,7 @@ func doGetTestRaftNodes(startID uint64, count int, ordered bool,
 	}
 	// pools
 	requestStatePool := &sync.Pool{}
-	requestStatePool.New = func() interface{} {
+	requestStatePool.New = func() any {
 		obj := &RequestState{}
 		obj.CompletedC = make(chan RequestResult, 1)
 		obj.pool = requestStatePool
@@ -190,8 +183,8 @@ func doGetTestRaftNodes(startID uint64, count int, ordered bool,
 	}
 	var err error
 	if ldb == nil {
-		nodeLogDir := fs.PathJoin(raftTestTopDir, logdbDir)
-		nodeLowLatencyLogDir := fs.PathJoin(raftTestTopDir, lowLatencyLogDBDir)
+		nodeLogDir := fs.PathJoin(testDir, logdbDir)
+		nodeLowLatencyLogDir := fs.PathJoin(testDir, lowLatencyLogDBDir)
 		if err := fs.MkdirAll(nodeLogDir, 0755); err != nil {
 			panic(err)
 		}
@@ -214,7 +207,7 @@ func doGetTestRaftNodes(startID uint64, count int, ordered bool,
 	for i := startID; i <= endID; i++ {
 		// create the snapshotter object
 		nodeSnapDir := fmt.Sprintf(snapDir, testShardID, i)
-		snapdir := fs.PathJoin(raftTestTopDir, nodeSnapDir)
+		snapdir := fs.PathJoin(testDir, nodeSnapDir)
 		if err := fs.MkdirAll(snapdir, 0755); err != nil {
 			panic(err)
 		}
@@ -366,7 +359,7 @@ func singleStepNodes(nodes []*node, smList []*rsm.StateMachine,
 func stepNodes(nodes []*node, smList []*rsm.StateMachine,
 	r *testRouter, ticks uint64) {
 	s := ticks + 10
-	for i := uint64(0); i < s; i++ {
+	for range s {
 		for _, node := range nodes {
 			tick := node.pendingReadIndexes.getTick() + 1
 			tickMsg := pb.Message{
@@ -423,8 +416,7 @@ func stopNodes(nodes []*node) {
 func TestNodeCanBeCreatedAndStarted(t *testing.T) {
 	fs := vfs.GetTestFS()
 	defer leaktest.AfterTest(t)()
-	defer cleanupTestDir(fs)
-	nodes, smList, router, ldb := getTestRaftNodes(3, false, fs)
+	nodes, smList, router, ldb := getTestRaftNodes(t.TempDir(), 3, false, fs)
 	assert.Len(t, nodes, 3)
 	assert.Len(t, smList, 3)
 	defer stopNodes(nodes)
@@ -438,9 +430,7 @@ func getMaxLastApplied(smList []*rsm.StateMachine) uint64 {
 	maxLastApplied := uint64(0)
 	for _, sm := range smList {
 		la := sm.GetLastApplied()
-		if la > maxLastApplied {
-			maxLastApplied = la
-		}
+		maxLastApplied = max(maxLastApplied, la)
 	}
 	return maxLastApplied
 }
@@ -515,8 +505,7 @@ func runRaftNodeTest(t *testing.T, quiesce bool, ordered bool,
 	tf func(t *testing.T, nodes []*node,
 		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB), fs vfs.IFS) {
 	defer leaktest.AfterTest(t)()
-	defer cleanupTestDir(fs)
-	nodes, smList, router, ldb := getTestRaftNodes(3, ordered, fs)
+	nodes, smList, router, ldb := getTestRaftNodes(t.TempDir(), 3, ordered, fs)
 	if quiesce {
 		for idx := range nodes {
 			(nodes[idx]).qs.enabled = true
@@ -591,14 +580,14 @@ func TestProposalCanBeMadeWithMessageDrops(t *testing.T) {
 		n := mustHasLeaderNode(nodes, t)
 		var ok bool
 		var session *client.Session
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			session, ok = getProposalTestClient(n, nodes, smList, router)
 			if ok {
 				break
 			}
 		}
 		require.NotNil(t, session, "failed to get session")
-		for i := 0; i < 20; i++ {
+		for range 20 {
 			maxLastApplied := getMaxLastApplied(smList)
 			makeCheckedTestProposal(t, session, []byte("test-data"), 4000,
 				nodes, smList, router, requestCompleted, false, 0)
@@ -787,7 +776,7 @@ func TestReproposeRespondedDataWillTimeout(t *testing.T) {
 
 		respondedSeriesID := session.SeriesID
 		session.ProposalCompleted()
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			makeCheckedTestProposal(t, session, data, 2000,
 				nodes, smList, router, requestCompleted, true, uint64(len(data)))
 			session.ProposalCompleted()
@@ -859,8 +848,7 @@ func TestRaftNodeQuiesceCanBeDisabled(t *testing.T) {
 	fs := vfs.GetTestFS()
 	defer leaktest.AfterTest(t)()
 	// quiesce is disabled by default
-	defer cleanupTestDir(fs)
-	nodes, smList, router, ldb := getTestRaftNodes(3, false, fs)
+	nodes, smList, router, ldb := getTestRaftNodes(t.TempDir(), 3, false, fs)
 	require.Len(t, nodes, 3, "failed to get 3 nodes")
 
 	for _, node := range nodes {
@@ -917,7 +905,7 @@ func TestNodesCanExitQuiesceByMakingProposal(t *testing.T) {
 		}
 		n := nodes[0]
 		done := false
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			_, ok := getProposalTestClient(n, nodes, smList, router)
 			if ok {
 				done = true
@@ -984,12 +972,12 @@ func TestNodesCanExitQuiesceByConfigChange(t *testing.T) {
 		}
 		n := nodes[0]
 		done := false
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			rs, err := n.requestAddNodeWithOrderID(24680, "localhost:12345", 0, 10)
 			require.NoError(t, err, "request to add node failed, %v", err)
 
 			hasResp := false
-			for i := uint64(0); i < 25; i++ {
+			for range uint64(25) {
 				singleStepNodes(nodes, smList, router)
 				select {
 				case v := <-rs.ResultC():
@@ -1008,7 +996,7 @@ func TestNodesCanExitQuiesceByConfigChange(t *testing.T) {
 				break
 			}
 		}
-		for i := uint64(0); i < 20; i++ {
+		for range uint64(20) {
 			singleStepNodes(nodes, smList, router)
 		}
 		for _, node := range nodes {
@@ -1063,7 +1051,7 @@ func testNodeCanBeAdded(t *testing.T, fs vfs.IFS) {
 func TestNodeCanBeAddedWithMessageDrops(t *testing.T) {
 	fs := vfs.GetTestFS()
 	defer leaktest.AfterTest(t)()
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		testNodeCanBeAdded(t, fs)
 	}
 }
@@ -1088,8 +1076,8 @@ func sliceEqual(s1 []uint64, s2 []uint64) bool {
 	if len(s1) != len(s2) {
 		return false
 	}
-	sort.Slice(s1, func(i, j int) bool { return s1[i] < s1[j] })
-	sort.Slice(s2, func(i, j int) bool { return s2[i] < s2[j] })
+	slices.Sort(s1)
+	slices.Sort(s2)
 	for idx, v := range s1 {
 		if v != s2[idx] {
 			return false
@@ -1106,7 +1094,7 @@ func TestNodeCanBeAdded2(t *testing.T) {
 		session, ok := getProposalTestClient(n, nodes, smList, router)
 		require.True(t, ok, "failed to get session")
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			rs, err := n.propose(session, []byte("test-data"), 10)
 			require.NoError(t, err)
 			stepNodes(nodes, smList, router, 10)
@@ -1124,7 +1112,7 @@ func TestNodeCanBeAdded2(t *testing.T) {
 			assert.True(t, sliceEqual([]uint64{1, 2, 3, 4}, getMemberNodes(node.sm)), "node members not expected: %v", getMemberNodes(node.sm))
 		}
 		// now bring the node 5 online
-		newNodes, newSMList, newRouter, _ := doGetTestRaftNodes(4, 1, true, ldb, fs)
+		newNodes, newSMList, newRouter, _ := doGetTestRaftNodes(t.TempDir(), 4, 1, true, ldb, fs)
 		require.Len(t, newNodes, 1, "failed to get 1 nodes")
 
 		router.addQ(4, newRouter.qm[4])
@@ -1226,7 +1214,7 @@ func TestSnapshotCanBeMade(t *testing.T) {
 
 		maxLastApplied := getMaxLastApplied(smList)
 		proposalCount := 50
-		for i := 0; i < proposalCount; i++ {
+		for i := range proposalCount {
 			data := fmt.Sprintf("test-data-%d", i)
 			rs, err := n.propose(session, []byte(data), 10)
 			require.NoError(t, err, "failed to make proposal")
@@ -1238,8 +1226,7 @@ func TestSnapshotCanBeMade(t *testing.T) {
 		closeProposalTestClient(n, nodes, smList, router, session)
 		// check we do have snapshots saved on disk
 		for _, node := range nodes {
-			sd := fmt.Sprintf(snapDir, testShardID, node.replicaID)
-			dir := fs.PathJoin(raftTestTopDir, sd)
+			dir := node.snapshotter.dir
 			count, err := getSnapshotFileCount(dir, fs)
 			require.NoError(t, err, "failed to get snapshot count")
 			assert.NotZero(t, count, "no snapshot image")
@@ -1257,7 +1244,7 @@ func TestSnapshotCanBeMadeTwice(t *testing.T) {
 
 		maxLastApplied := getMaxLastApplied(smList)
 		proposalCount := 50
-		for i := 0; i < proposalCount; i++ {
+		for i := range proposalCount {
 			data := fmt.Sprintf("test-data-%d", i)
 			rs, err := n.propose(session, []byte(data), 10)
 			require.NoError(t, err, "failed to make proposal")
@@ -1280,8 +1267,8 @@ func TestSnapshotCanBeMadeTwice(t *testing.T) {
 func TestNodesCanBeRestarted(t *testing.T) {
 	fs := vfs.GetTestFS()
 	defer leaktest.AfterTest(t)()
-	defer cleanupTestDir(fs)
-	nodes, smList, router, ldb := getTestRaftNodes(3, false, fs)
+	testDir := t.TempDir()
+	nodes, smList, router, ldb := getTestRaftNodes(testDir, 3, false, fs)
 	require.Len(t, nodes, 3, "failed to get 3 nodes")
 
 	stepNodesUntilThereIsLeader(nodes, smList, router)
@@ -1290,7 +1277,7 @@ func TestNodesCanBeRestarted(t *testing.T) {
 	require.True(t, ok, "failed to get session")
 
 	maxLastApplied := getMaxLastApplied(smList)
-	for i := 0; i < 25; i++ {
+	for range 25 {
 		rs, err := n.propose(session, []byte("test-data"), 10)
 		require.NoError(t, err)
 		stepNodes(nodes, smList, router, 10)
@@ -1300,8 +1287,7 @@ func TestNodesCanBeRestarted(t *testing.T) {
 	assert.Equal(t, maxLastApplied+25, getMaxLastApplied(smList), "not all 25 proposals applied")
 	closeProposalTestClient(n, nodes, smList, router, session)
 	for _, node := range nodes {
-		sd := fmt.Sprintf(snapDir, testShardID, node.replicaID)
-		dir := fs.PathJoin(raftTestTopDir, sd)
+		dir := node.snapshotter.dir
 		count, err := getSnapshotFileCount(dir, fs)
 		require.NoError(t, err, "failed to get snapshot count")
 		require.NotZero(t, count, "no snapshot available, count: %d", count)
@@ -1312,7 +1298,7 @@ func TestNodesCanBeRestarted(t *testing.T) {
 	}
 	require.NoError(t, ldb.Close())
 	// restart
-	nodes, smList, router, ldb = getTestRaftNodes(3, false, fs)
+	nodes, smList, router, ldb = getTestRaftNodes(testDir, 3, false, fs)
 	defer stopNodes(nodes)
 	defer func() {
 		require.NoError(t, ldb.Close())
@@ -1326,17 +1312,17 @@ func TestNodesCanBeRestarted(t *testing.T) {
 
 func TestGetTimeoutMillisecondFromContext(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	_, err := getTimeoutFromContext(context.Background())
+	_, err := getTimeoutFromContext(t.Context())
 	assert.Equal(t, ErrDeadlineNotSet, err)
 
 	d := time.Now()
 	time.Sleep(100 * time.Millisecond)
-	ctx, cancel := context.WithDeadline(context.Background(), d)
+	ctx, cancel := context.WithDeadline(t.Context(), d)
 	defer cancel()
 	_, err = getTimeoutFromContext(ctx)
 	assert.Equal(t, ErrInvalidDeadline, err)
 
-	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel = context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	v, err := getTimeoutFromContext(ctx)
 	require.NoError(t, err)
@@ -1614,4 +1600,3 @@ func TestEntriesToApply(t *testing.T) {
 		})
 	}
 }
-

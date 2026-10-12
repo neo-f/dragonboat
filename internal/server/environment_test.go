@@ -31,17 +31,16 @@ import (
 )
 
 const (
-	singleNodeHostTestDir = "test_nodehost_dir_safe_to_delete"
-	testLogDBName         = "test-name"
-	testBinVer            = raftio.LogDBBinVersion
-	testAddress           = "localhost:1111"
-	testDeploymentID      = 100
+	testLogDBName    = "test-name"
+	testBinVer       = raftio.LogDBBinVersion
+	testAddress      = "localhost:1111"
+	testDeploymentID = 100
 )
 
-func getTestNodeHostConfig() config.NodeHostConfig {
+func getTestNodeHostConfig(dir string) config.NodeHostConfig {
 	return config.NodeHostConfig{
-		WALDir:         singleNodeHostTestDir,
-		NodeHostDir:    singleNodeHostTestDir,
+		WALDir:         dir,
+		NodeHostDir:    dir,
 		RTTMillisecond: 50,
 		RaftAddress:    testAddress,
 	}
@@ -49,13 +48,8 @@ func getTestNodeHostConfig() config.NodeHostConfig {
 
 func TestCheckNodeHostDirWorksWhenEverythingMatches(t *testing.T) {
 	fs := vfs.GetTestFS()
-	defer func() {
-		if err := fs.RemoveAll(singleNodeHostTestDir); err != nil {
-			t.Fatalf("%v", err)
-		}
-	}()
 	func() {
-		c := getTestNodeHostConfig()
+		c := getTestNodeHostConfig(t.TempDir())
 		defer func() {
 			require.NotPanics(t, func() {
 				if r := recover(); r != nil {
@@ -95,12 +89,7 @@ func TestCheckNodeHostDirWorksWhenEverythingMatches(t *testing.T) {
 
 func TestRaftAddressIsAllowedToChangeWhenRequested(t *testing.T) {
 	fs := vfs.GetTestFS()
-	c := getTestNodeHostConfig()
-	defer func() {
-		if err := fs.RemoveAll(singleNodeHostTestDir); err != nil {
-			t.Fatalf("%v", err)
-		}
-	}()
+	c := getTestNodeHostConfig(t.TempDir())
 	binVer := uint32(100)
 	testLogDBName := "test-name"
 	hostname := ""
@@ -139,12 +128,7 @@ func testNodeHostDirectoryDetectsMismatches(t *testing.T,
 	addr string, hostname string, binVer uint32, name string,
 	hardHashMismatch bool, addressByNodeHostID bool, expErr error,
 	fs vfs.IFS) {
-	c := getTestNodeHostConfig()
-	defer func() {
-		if err := fs.RemoveAll(singleNodeHostTestDir); err != nil {
-			t.Fatalf("%v", err)
-		}
-	}()
+	c := getTestNodeHostConfig(t.TempDir())
 	env, err := NewEnv(c, fs)
 	require.NoError(t, err, "failed to new environment")
 	_, _, err = env.CreateNodeHostDir(testDeploymentID)
@@ -221,12 +205,7 @@ func TestCanDetectMismatchedDefaultNodeRegistryEnabled(t *testing.T) {
 
 func TestLockFileCanBeLockedAndUnlocked(t *testing.T) {
 	fs := vfs.GetTestFS()
-	c := getTestNodeHostConfig()
-	defer func() {
-		if err := fs.RemoveAll(singleNodeHostTestDir); err != nil {
-			t.Fatalf("%v", err)
-		}
-	}()
+	c := getTestNodeHostConfig(t.TempDir())
 	env, err := NewEnv(c, fs)
 	require.NoError(t, err, "failed to new environment")
 	_, _, err = env.CreateNodeHostDir(c.DeploymentID)
@@ -240,16 +219,10 @@ func TestLockFileCanBeLockedAndUnlocked(t *testing.T) {
 
 func TestNodeHostIDCanBeGenerated(t *testing.T) {
 	fs := vfs.GetTestFS()
-	err := fs.RemoveAll(singleNodeHostTestDir)
+	testDir := t.TempDir()
+	err := fs.MkdirAll(testDir, 0755)
 	require.NoError(t, err)
-	err = fs.MkdirAll(singleNodeHostTestDir, 0755)
-	require.NoError(t, err)
-	defer func() {
-		if err := fs.RemoveAll(singleNodeHostTestDir); err != nil {
-			t.Fatalf("%v", err)
-		}
-	}()
-	c := getTestNodeHostConfig()
+	c := getTestNodeHostConfig(testDir)
 	env, err := NewEnv(c, fs)
 	require.NoError(t, err, "failed to create env")
 	v, err := env.PrepareNodeHostID("")
@@ -259,16 +232,10 @@ func TestNodeHostIDCanBeGenerated(t *testing.T) {
 
 func TestPrepareNodeHostIDWillReportNodeHostIDChange(t *testing.T) {
 	fs := vfs.GetTestFS()
-	err := fs.RemoveAll(singleNodeHostTestDir)
+	testDir := t.TempDir()
+	err := fs.MkdirAll(testDir, 0755)
 	require.NoError(t, err)
-	err = fs.MkdirAll(singleNodeHostTestDir, 0755)
-	require.NoError(t, err)
-	defer func() {
-		if err := fs.RemoveAll(singleNodeHostTestDir); err != nil {
-			t.Fatalf("%v", err)
-		}
-	}()
-	c := getTestNodeHostConfig()
+	c := getTestNodeHostConfig(testDir)
 	env, err := NewEnv(c, fs)
 	require.NoError(t, err, "failed to create env")
 	v, err := env.PrepareNodeHostID("")
@@ -286,31 +253,25 @@ func TestPrepareNodeHostIDWillReportNodeHostIDChange(t *testing.T) {
 
 func TestRemoveSavedSnapshots(t *testing.T) {
 	fs := vfs.GetTestFS()
-	err := fs.RemoveAll(singleNodeHostTestDir)
+	testDir := t.TempDir()
+	err := fs.MkdirAll(testDir, 0755)
 	require.NoError(t, err)
-	err = fs.MkdirAll(singleNodeHostTestDir, 0755)
-	require.NoError(t, err)
-	defer func() {
-		if err := fs.RemoveAll(singleNodeHostTestDir); err != nil {
-			t.Fatalf("%v", err)
-		}
-	}()
-	for i := 0; i < 16; i++ {
-		ssdir := fs.PathJoin(singleNodeHostTestDir, fmt.Sprintf("snapshot-%X", i))
+	for i := range 16 {
+		ssdir := fs.PathJoin(testDir, fmt.Sprintf("snapshot-%X", i))
 		err := fs.MkdirAll(ssdir, 0755)
 		require.NoError(t, err, "failed to mkdir")
 	}
 	for i := 1; i <= 2; i++ {
-		ssdir := fs.PathJoin(singleNodeHostTestDir, fmt.Sprintf("mydata-%X", i))
+		ssdir := fs.PathJoin(testDir, fmt.Sprintf("mydata-%X", i))
 		err := fs.MkdirAll(ssdir, 0755)
 		require.NoError(t, err, "failed to mkdir")
 	}
-	err = removeSavedSnapshots(singleNodeHostTestDir, fs)
+	err = removeSavedSnapshots(testDir, fs)
 	require.NoError(t, err, "failed to remove saved snapshots")
-	files, err := fs.List(singleNodeHostTestDir)
+	files, err := fs.List(testDir)
 	require.NoError(t, err, "failed to read dir")
 	for _, fn := range files {
-		fi, err := fs.Stat(fs.PathJoin(singleNodeHostTestDir, fn))
+		fi, err := fs.Stat(fs.PathJoin(testDir, fn))
 		require.NoError(t, err, "failed to get stat")
 		assert.True(t, fi.IsDir(), "found unexpected file %v", fi)
 		assert.Contains(t, []string{"mydata-1", "mydata-2"}, fi.Name(),

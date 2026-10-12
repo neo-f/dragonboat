@@ -21,6 +21,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/lni/goutils/leaktest"
@@ -36,21 +37,21 @@ import (
 func TestKVCanBeCreatedAndClosed(t *testing.T) {
 	fs := vfs.GetTestFS()
 	defer leaktest.AfterTest(t)()
+	testDir := t.TempDir()
 	cfg := config.GetDefaultLogDBConfig()
-	kvs, err := newDefaultKVStore(cfg, nil, RDBTestDirectory,
-		RDBTestDirectory, fs)
+	kvs, err := newDefaultKVStore(cfg, nil, testDir,
+		testDir, fs)
 	require.NoError(t, err, "failed to open kv store")
-	defer deleteTestDB(fs)
 	require.NoError(t, kvs.Close(), "failed to close kv store")
 }
 
 func runKVTest(t *testing.T, tf func(t *testing.T, kvs kv.IKVStore),
 	fs vfs.IFS) {
 	defer leaktest.AfterTest(t)()
-	defer deleteTestDB(fs)
+	testDir := t.TempDir()
 	cfg := config.GetDefaultLogDBConfig()
-	kvs, err := newDefaultKVStore(cfg, nil, RDBTestDirectory,
-		RDBTestDirectory, fs)
+	kvs, err := newDefaultKVStore(cfg, nil, testDir,
+		testDir, fs)
 	require.NoError(t, err, "failed to open kv store")
 	defer func() {
 		require.NoError(t, kvs.Close(), "failed to close kvs")
@@ -133,7 +134,7 @@ func TestKVWriteBatch(t *testing.T) {
 func testKVIterateValue(t *testing.T,
 	fk []byte, lk []byte, inc bool, count uint64) {
 	tf := func(t *testing.T, kvs kv.IKVStore) {
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			key := fmt.Sprintf("key%d", i)
 			val := fmt.Sprintf("val%d", i)
 			err := kvs.SaveValue([]byte(key), []byte(val))
@@ -257,8 +258,7 @@ func TestEntriesCanBeRemovedFromKVStore(t *testing.T) {
 
 func TestCompactionReleaseStorageSpace(t *testing.T) {
 	fs := vfs.GetTestFS()
-	deleteTestDB(fs)
-	defer deleteTestDB(fs)
+	testDir := t.TempDir()
 	maxIndex := uint64(1024 * 128)
 	fk := newKey(entryKeySize, nil)
 	lk := newKey(entryKeySize, nil)
@@ -266,8 +266,8 @@ func TestCompactionReleaseStorageSpace(t *testing.T) {
 	lk.SetEntryKey(100, 1, maxIndex+1)
 	cfg := config.GetDefaultLogDBConfig()
 	func() {
-		kvs, err := newDefaultKVStore(cfg, nil, RDBTestDirectory,
-			RDBTestDirectory, fs)
+		kvs, err := newDefaultKVStore(cfg, nil, testDir,
+			testDir, fs)
 		require.NoError(t, err, "failed to open kv store")
 		defer func() {
 			require.NoError(t, kvs.Close())
@@ -285,11 +285,11 @@ func TestCompactionReleaseStorageSpace(t *testing.T) {
 		err = kvs.CommitWriteBatch(wb)
 		require.NoError(t, err, "failed to commit wb")
 	}()
-	sz, err := getDirSize(RDBTestDirectory, true, fs)
+	sz, err := getDirSize(testDir, true, fs)
 	require.NoError(t, err, "failed to get sz")
 	require.GreaterOrEqual(t, sz, int64(1024*1024*8), "unexpected size")
-	kvs, err := newDefaultKVStore(cfg, nil, RDBTestDirectory,
-		RDBTestDirectory, fs)
+	kvs, err := newDefaultKVStore(cfg, nil, testDir,
+		testDir, fs)
 	require.NoError(t, err, "failed to open kv store")
 	defer func() {
 		require.NoError(t, kvs.Close())
@@ -298,9 +298,20 @@ func TestCompactionReleaseStorageSpace(t *testing.T) {
 	require.NoError(t, err, "remove entry failed")
 	err = kvs.CompactEntries(fk.Key(), lk.Key())
 	require.NoError(t, err, "compaction failed")
-	sz, err = getDirSize(RDBTestDirectory, false, fs)
-	require.NoError(t, err, "failed to get sz")
-	require.LessOrEqual(t, sz, int64(1024*1024), "unexpected size")
+	// pebble deletes obsolete files asynchronously after the compaction
+	// completes, wait for the storage space to be actually released.
+	// getDirSize may hit files being concurrently removed by pebble's
+	// cleanup, such errors are ignored here and covered by a retry.
+	released := false
+	for range 100 {
+		if sz, err = getDirSize(testDir, false, fs); err == nil &&
+			sz <= int64(1024*1024) {
+			released = true
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	require.True(t, released, "unexpected size %d", sz)
 }
 
 var flagContent = "YYYY"
@@ -345,7 +356,7 @@ func cutDataFile(fp string, fs vfs.IFS) (bool, error) {
 		return false, err
 	}
 	data := buf.Bytes()
-	f, err = fs.Create(fp)
+	f, err = fs.Create(fp, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		return false, err
 	}
@@ -365,7 +376,12 @@ func modifyDataFile(fp string, fs vfs.IFS) (bool, error) {
 	tmpFp := fs.PathJoin(fs.PathDir(fp), "tmp")
 	if err := func() error {
 		idx := int64(0)
-		f, err := fs.ReuseForWrite(fp, tmpFp)
+		// upstream pebble memfs returns write-only files from ReuseForWrite,
+		// rename and open the file for both read and write instead
+		if err := fs.Rename(fp, tmpFp); err != nil {
+			return err
+		}
+		f, err := fs.OpenReadWrite(tmpFp, vfs.WriteCategoryUnspecified)
 		if err != nil {
 			return err
 		}
@@ -378,7 +394,7 @@ func modifyDataFile(fp string, fs vfs.IFS) (bool, error) {
 		data := make([]byte, 4)
 		for {
 			if _, err := f.Read(data); err != nil {
-				if err == io.EOF {
+				if errors.Is(err, io.EOF) {
 					break
 				} else {
 					return err
@@ -408,12 +424,11 @@ func modifyDataFile(fp string, fs vfs.IFS) (bool, error) {
 }
 
 func testDiskCorruptionIsHandled(t *testing.T, wal bool, cut bool, fs vfs.IFS) {
-	deleteTestDB(fs)
-	defer deleteTestDB(fs)
+	testDir := t.TempDir()
 	cfg := config.GetDefaultLogDBConfig()
 	func() {
-		kvs, err := newDefaultKVStore(cfg, nil, RDBTestDirectory,
-			RDBTestDirectory, fs)
+		kvs, err := newDefaultKVStore(cfg, nil, testDir,
+			testDir, fs)
 		require.NoError(t, err, "failed to open kv store")
 		defer func() {
 			require.NoError(t, kvs.Close())
@@ -430,8 +445,8 @@ func testDiskCorruptionIsHandled(t *testing.T, wal bool, cut bool, fs vfs.IFS) {
 		}
 		wb := kvs.GetWriteBatch()
 		defer wb.Destroy()
-		data := make([]byte, 0)
-		for i := 0; i < 16; i++ {
+		data := make([]byte, 0, len(flagContent)*16)
+		for range 16 {
 			data = append(data, []byte(flagContent)...)
 		}
 		for i := uint64(1); i <= 1; i++ {
@@ -446,7 +461,7 @@ func testDiskCorruptionIsHandled(t *testing.T, wal bool, cut bool, fs vfs.IFS) {
 			require.NoError(t, err, "full compaction failed")
 		}
 	}()
-	files, err := getDataFilePathList(RDBTestDirectory, wal, fs)
+	files, err := getDataFilePathList(testDir, wal, fs)
 	require.NoError(t, err, "failed to get data files")
 	corrupted := false
 	for _, fp := range files {
@@ -464,8 +479,8 @@ func testDiskCorruptionIsHandled(t *testing.T, wal bool, cut bool, fs vfs.IFS) {
 		}
 	}
 	require.True(t, corrupted, "failed to corrupt data files")
-	kvs, err := newDefaultKVStore(cfg, nil, RDBTestDirectory,
-		RDBTestDirectory, fs)
+	kvs, err := newDefaultKVStore(cfg, nil, testDir,
+		testDir, fs)
 	if err == nil {
 		defer func() {
 			require.NoError(t, kvs.Close())

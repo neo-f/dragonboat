@@ -34,8 +34,9 @@ const (
 	LogReaderTestReplicaID uint64 = 12345
 )
 
-func getNewLogReaderTestDB(entries []pb.Entry, fs vfs.IFS) raftio.ILogDB {
-	logdb := getNewTestDB("db-dir", "wal-db-dir", false, fs)
+func getNewLogReaderTestDB(t *testing.T,
+	entries []pb.Entry, fs vfs.IFS) raftio.ILogDB {
+	logdb := getNewTestDB(t.TempDir(), "db-dir", "wal-db-dir", false, fs)
 	ud := pb.Update{
 		EntriesToSave: entries,
 		ShardID:       LogReaderTestShardID,
@@ -47,8 +48,8 @@ func getNewLogReaderTestDB(entries []pb.Entry, fs vfs.IFS) raftio.ILogDB {
 	return logdb
 }
 
-func getTestLogReader(entries []pb.Entry, fs vfs.IFS) *LogReader {
-	logdb := getNewLogReaderTestDB(entries, fs)
+func getTestLogReader(t *testing.T, entries []pb.Entry, fs vfs.IFS) *LogReader {
+	logdb := getNewLogReaderTestDB(t, entries, fs)
 	ls := NewLogReader(LogReaderTestShardID, LogReaderTestReplicaID, logdb)
 	ls.SetCompactor(testCompactor)
 	ls.markerIndex = entries[0].Index
@@ -101,12 +102,11 @@ func testLogReaderEntries(t *testing.T, fs vfs.IFS) {
 	}
 
 	for i, tt := range tests {
-		s := getTestLogReader(ents, fs)
+		s := getTestLogReader(t, ents, fs)
 		entries, err := s.Entries(tt.lo, tt.hi, tt.maxsize)
 		require.Equal(t, tt.werr, err, "#%d: err mismatch", i)
 		require.Equal(t, tt.wentries, entries, "#%d: entries mismatch", i)
 		require.NoError(t, s.logdb.Close())
-		deleteTestDB(fs)
 	}
 }
 
@@ -133,7 +133,7 @@ func testLogReaderTerm(t *testing.T, fs vfs.IFS) {
 		{6, raft.ErrUnavailable, 0, false},
 	}
 	for i, tt := range tests {
-		s := getTestLogReader(ents, fs)
+		s := getTestLogReader(t, ents, fs)
 		if tt.wpanic {
 			require.Panics(t, func() {
 				_, err := s.Term(tt.i)
@@ -147,7 +147,6 @@ func testLogReaderTerm(t *testing.T, fs vfs.IFS) {
 			}, "#%d: unexpected panic", i)
 		}
 		require.NoError(t, s.logdb.Close())
-		deleteTestDB(fs)
 	}
 }
 
@@ -161,14 +160,13 @@ func testLogReaderLastIndex(t *testing.T, fs vfs.IFS) {
 	ents := []pb.Entry{
 		{Index: 3, Term: 3}, {Index: 4, Term: 4}, {Index: 5, Term: 5},
 	}
-	s := getTestLogReader(ents, fs)
+	s := getTestLogReader(t, ents, fs)
 	_, last := s.GetRange()
 	require.Equal(t, uint64(5), last, "last index mismatch")
 	require.NoError(t, s.Append([]pb.Entry{{Index: 6, Term: 5}}))
 	_, last = s.GetRange()
 	require.Equal(t, uint64(6), last, "last index after append mismatch")
 	require.NoError(t, s.logdb.Close())
-	deleteTestDB(fs)
 }
 
 func TestLogReaderFirstIndex(t *testing.T) {
@@ -181,7 +179,7 @@ func testLogReaderFirstIndex(t *testing.T, fs vfs.IFS) {
 	ents := []pb.Entry{
 		{Index: 3, Term: 3}, {Index: 4, Term: 4}, {Index: 5, Term: 5},
 	}
-	s := getTestLogReader(ents, fs)
+	s := getTestLogReader(t, ents, fs)
 	first, _ := s.GetRange()
 	require.Equal(t, uint64(4), first, "first index mismatch")
 	_, li := s.GetRange()
@@ -192,7 +190,6 @@ func testLogReaderFirstIndex(t *testing.T, fs vfs.IFS) {
 	_, li = s.GetRange()
 	require.Equal(t, uint64(5), li, "last index after compact mismatch")
 	require.NoError(t, s.logdb.Close())
-	deleteTestDB(fs)
 }
 
 func TestLogReaderAppend(t *testing.T) {
@@ -264,7 +261,7 @@ func testLogReaderAppend(t *testing.T, fs vfs.IFS) {
 		},
 	}
 	for i, tt := range tests {
-		s := getTestLogReader(ents, fs)
+		s := getTestLogReader(t, ents, fs)
 		require.NoError(t, s.Append(tt.entries))
 		// put tt.entries to logdb
 		ud := pb.Update{
@@ -291,7 +288,6 @@ func testLogReaderAppend(t *testing.T, fs vfs.IFS) {
 			require.Equal(t, e.Term, term, "term mismatch for index %d", e.Index)
 		}
 		require.NoError(t, s.logdb.Close())
-		deleteTestDB(fs)
 	}
 }
 
@@ -306,7 +302,7 @@ func TestLogReaderApplySnapshot(t *testing.T) {
 		{Index: 4, Term: 4, Membership: *cs},
 		{Index: 3, Term: 3, Membership: *cs},
 	}
-	s := getTestLogReader(ents, fs)
+	s := getTestLogReader(t, ents, fs)
 	//Apply Snapshot successful
 	i := 0
 	tt := tests[i]
@@ -322,7 +318,6 @@ func TestLogReaderApplySnapshot(t *testing.T) {
 	err = s.ApplySnapshot(tt)
 	require.Equal(t, raft.ErrSnapshotOutOfDate, err, "#%d: error mismatch", i)
 	require.NoError(t, s.logdb.Close())
-	deleteTestDB(fs)
 }
 
 func TestLogReaderCreateSnapshot(t *testing.T) {
@@ -344,13 +339,12 @@ func TestLogReaderCreateSnapshot(t *testing.T) {
 		{5, 5, nil, pb.Snapshot{Index: 5, Term: 5, Membership: *cs}},
 	}
 	for i, tt := range tests {
-		s := getTestLogReader(ents, fs)
+		s := getTestLogReader(t, ents, fs)
 		err := s.CreateSnapshot(tt.wsnap)
 		require.Equal(t, tt.werr, err, "#%d: error mismatch", i)
 		require.Equal(t, tt.wsnap.Index, s.snapshot.Index,
 			"#%d: snapshot index mismatch", i)
 		require.NoError(t, s.logdb.Close())
-		deleteTestDB(fs)
 	}
 }
 
@@ -372,14 +366,13 @@ func TestLogReaderSetRange(t *testing.T) {
 		{6, 6, 9, 3},
 	}
 	for idx, tt := range tests {
-		s := getTestLogReader(ents, fs)
+		s := getTestLogReader(t, ents, fs)
 		s.SetRange(tt.firstIndex, tt.length)
 		require.Equal(t, tt.expMarkerIndex, s.markerIndex,
 			"%d: marker index mismatch", idx)
 		require.Equal(t, tt.expLength, s.length,
 			"%d: length mismatch", idx)
 		require.NoError(t, s.logdb.Close())
-		deleteTestDB(fs)
 	}
 }
 
@@ -393,8 +386,7 @@ func TestLogReaderGetSnapshot(t *testing.T) {
 		Addresses: map[uint64]string{1: "", 2: "", 3: ""},
 	}
 	ss := pb.Snapshot{Index: 4, Term: 4, Membership: *cs}
-	s := getTestLogReader(ents, fs)
-	defer deleteTestDB(fs)
+	s := getTestLogReader(t, ents, fs)
 	defer func() {
 		require.NoError(t, s.logdb.Close())
 	}()
@@ -413,8 +405,7 @@ func TestLogReaderInitialState(t *testing.T) {
 		Addresses: map[uint64]string{1: "", 2: "", 3: ""},
 	}
 	ss := pb.Snapshot{Index: 4, Term: 4, Membership: *cs}
-	s := getTestLogReader(ents, fs)
-	defer deleteTestDB(fs)
+	s := getTestLogReader(t, ents, fs)
 	defer func() {
 		require.NoError(t, s.logdb.Close())
 	}()

@@ -31,8 +31,8 @@ import (
 )
 
 func getTestChunk() []pb.Chunk {
-	result := make([]pb.Chunk, 0)
-	for chunkID := uint64(0); chunkID < 10; chunkID++ {
+	result := make([]pb.Chunk, 0, 10)
+	for chunkID := range uint64(10) {
 		c := pb.Chunk{
 			DeploymentId:   settings.UnmanagedDeploymentID,
 			BinVer:         raftio.TransportBinVersion,
@@ -81,14 +81,9 @@ func hasExternalFile(cs *Chunk,
 
 func runChunkTest(t *testing.T,
 	fn func(*testing.T, *Chunk, *testMessageHandler), fs vfs.IFS) {
-	defer func() {
-		if err := fs.RemoveAll(snapshotDir); err != nil {
-			t.Fatalf("%v", err)
-		}
-	}()
 	defer leaktest.AfterTest(t)()
 	handler := newTestMessageHandler()
-	trans, _, stopper, tt := newTestTransport(handler, false, fs)
+	trans, _, stopper, _ := newTestTransport(t, handler, false, fs)
 	defer func() {
 		if err := trans.env.Close(); err != nil {
 			t.Fatalf("failed to stop the env %v", err)
@@ -100,7 +95,6 @@ func runChunkTest(t *testing.T,
 		}
 	}()
 	defer stopper.Stop()
-	defer tt.cleanup()
 	chunks := NewChunk(trans.handleRequest,
 		trans.snapshotReceived, trans.dir, trans.nhConfig.GetDeploymentID(), fs)
 	ts := getTestChunk()
@@ -113,16 +107,11 @@ func runChunkTest(t *testing.T,
 
 func TestMaxSlotIsEnforced(t *testing.T) {
 	fn := func(t *testing.T, chunks *Chunk, handler *testMessageHandler) {
-		defer func() {
-			if err := chunks.fs.RemoveAll(snapshotDir); err != nil {
-				t.Fatalf("%v", err)
-			}
-		}()
 		inputs := getTestChunk()
 		chunks.validate = false
 		v := uint64(1)
 		c := inputs[0]
-		for i := uint64(0); i < maxConcurrentSlot; i++ {
+		for range maxConcurrentSlot {
 			v++
 			c.ShardID = v
 			snapDir := chunks.dir(v, c.ReplicaID)
@@ -134,7 +123,7 @@ func TestMaxSlotIsEnforced(t *testing.T) {
 			}
 		}
 		count := len(chunks.tracked)
-		for i := uint64(0); i < maxConcurrentSlot; i++ {
+		for range maxConcurrentSlot {
 			v++
 			c.ShardID = v
 			if chunks.addLocked(c) {
@@ -255,7 +244,7 @@ func TestGcRemovesRecordAndTempFile(t *testing.T) {
 		chunks.addLocked(inputs[0])
 		assert.True(t, chunks.addLocked(inputs[0]))
 		count := chunks.timeout + chunks.gcTick
-		for i := uint64(0); i < count; i++ {
+		for range count {
 			chunks.Tick()
 		}
 		_, ok := chunks.tracked[chunkKey(inputs[0])]
@@ -334,7 +323,7 @@ func TestSignificantlyDelayedNonFirstChunkAreIgnored(t *testing.T) {
 		chunks.validate = false
 		chunks.addLocked(inputs[0])
 		count := chunks.timeout + chunks.gcTick
-		for i := uint64(0); i < count; i++ {
+		for range count {
 			chunks.Tick()
 		}
 		_, ok := chunks.tracked[chunkKey(inputs[0])]
@@ -636,14 +625,14 @@ func TestGetMessageFromChunk(t *testing.T) {
 		ss := req.Snapshot
 		assert.Equal(t, len(files), len(ss.Files))
 		assert.Equal(t, chunk.FileSize, ss.FileSize)
-		assert.Equal(t, chunks.fs.PathJoin("gtransport_test_data_safe_to_delete",
-			"snapshot-123-3", "snapshot-00000000000000C8", "test.data"), ss.Filepath)
+		assert.Equal(t, chunks.fs.PathJoin(chunks.dir(123, 3),
+			"snapshot-00000000000000C8", "test.data"), ss.Filepath)
 		assert.Equal(t, len(sf1.Metadata), len(ss.Files[0].Metadata))
 		assert.Equal(t, len(sf2.Metadata), len(ss.Files[1].Metadata))
-		assert.Equal(t, chunks.fs.PathJoin("gtransport_test_data_safe_to_delete",
-			"snapshot-123-3", "snapshot-00000000000000C8", "external-file-1"), ss.Files[0].Filepath)
-		assert.Equal(t, chunks.fs.PathJoin("gtransport_test_data_safe_to_delete",
-			"snapshot-123-3", "snapshot-00000000000000C8", "external-file-2"), ss.Files[1].Filepath)
+		assert.Equal(t, chunks.fs.PathJoin(chunks.dir(123, 3),
+			"snapshot-00000000000000C8", "external-file-1"), ss.Files[0].Filepath)
+		assert.Equal(t, chunks.fs.PathJoin(chunks.dir(123, 3),
+			"snapshot-00000000000000C8", "external-file-2"), ss.Files[1].Filepath)
 	}
 	fs := vfs.GetTestFS()
 	runChunkTest(t, fn, fs)

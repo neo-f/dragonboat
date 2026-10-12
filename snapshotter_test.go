@@ -35,12 +35,11 @@ import (
 const (
 	tmpSnapshotDirSuffix = "generating"
 	recvTmpDirSuffix     = "receiving"
-	rdbTestDirectory     = "rdb_test_dir_safe_to_delete"
 )
 
-func getNewTestDB(dir string, lldir string, fs vfs.IFS) raftio.ILogDB {
-	d := fs.PathJoin(rdbTestDirectory, dir)
-	lld := fs.PathJoin(rdbTestDirectory, lldir)
+func getNewTestDB(testDir string, dir string, lldir string, fs vfs.IFS) raftio.ILogDB {
+	d := fs.PathJoin(testDir, dir)
+	lld := fs.PathJoin(testDir, lldir)
 	if err := fs.MkdirAll(d, 0777); err != nil {
 		panic(err)
 	}
@@ -58,14 +57,8 @@ func getNewTestDB(dir string, lldir string, fs vfs.IFS) raftio.ILogDB {
 	return db
 }
 
-func deleteTestRDB(fs vfs.IFS) {
-	if err := fs.RemoveAll(rdbTestDirectory); err != nil {
-		panic(err)
-	}
-}
-
-func getTestSnapshotter(ldb raftio.ILogDB, fs vfs.IFS) *snapshotter {
-	fp := fs.PathJoin(rdbTestDirectory, "snapshot")
+func getTestSnapshotter(testDir string, ldb raftio.ILogDB, fs vfs.IFS) *snapshotter {
+	fp := fs.PathJoin(testDir, "snapshot")
 	if err := fs.MkdirAll(fp, 0777); err != nil {
 		panic(err)
 	}
@@ -80,12 +73,11 @@ func runSnapshotterTest(t *testing.T,
 	fn func(t *testing.T, logdb raftio.ILogDB, snapshotter *snapshotter),
 	fs vfs.IFS) {
 	defer leaktest.AfterTest(t)()
+	testDir := t.TempDir()
 	dir := "db-dir"
 	lldir := "wal-db-dir"
-	deleteTestRDB(fs)
-	ldb := getNewTestDB(dir, lldir, fs)
-	s := getTestSnapshotter(ldb, fs)
-	defer deleteTestRDB(fs)
+	ldb := getNewTestDB(testDir, dir, lldir, fs)
+	s := getTestSnapshotter(testDir, ldb, fs)
 	defer func() {
 		require.NoError(t, ldb.Close())
 	}()
@@ -127,7 +119,7 @@ func TestSnapshotCanBeFinalized(t *testing.T) {
 		_, err := fs.Stat(tmpDir)
 		require.NoError(t, err)
 		testfp := fs.PathJoin(tmpDir, "test.data")
-		f, err := fs.Create(testfp)
+		f, err := fs.Create(testfp, vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 		_, err = f.Write(make([]byte, 12))
 		require.NoError(t, err)
@@ -376,7 +368,7 @@ func TestSnapshotterCompact(t *testing.T) {
 			require.NoError(t, env.CreateTempDir())
 			require.NoError(t, snapshotter.Commit(s, rsm.SSRequest{}))
 			fp := snapshotter.getFilePath(s.Index)
-			f, err := fs.Create(fp)
+			f, err := fs.Create(fp, vfs.WriteCategoryUnspecified)
 			require.NoError(t, err)
 			require.NoError(t, f.Close())
 		}
@@ -420,7 +412,7 @@ func TestShrinkSnapshots(t *testing.T) {
 			binary.LittleEndian.PutUint64(sz, 0)
 			_, err = writer.Write(sz)
 			require.NoError(t, err)
-			for j := 0; j < 10; j++ {
+			for range 10 {
 				data := make([]byte, 1024*1024)
 				_, err = writer.Write(data)
 				require.NoError(t, err)

@@ -32,10 +32,6 @@ import (
 	pb "github.com/lni/dragonboat/v4/raftpb"
 )
 
-const (
-	RDBTestDirectory = "db_test_dir_safe_to_delete"
-)
-
 func getDirSize(path string,
 	includeLogSize bool, fs vfs.IFS) (int64, error) {
 	var size int64
@@ -58,10 +54,10 @@ func getDirSize(path string,
 	return size, err
 }
 
-func getNewTestDB(dir string,
+func getNewTestDB(testDir string, dir string,
 	lldir string, batched bool, fs vfs.IFS) raftio.ILogDB {
-	d := fs.PathJoin(RDBTestDirectory, dir)
-	lld := fs.PathJoin(RDBTestDirectory, lldir)
+	d := fs.PathJoin(testDir, dir)
+	lld := fs.PathJoin(testDir, lldir)
 	if err := fileutil.MkdirAll(d, fs); err != nil {
 		panic(err)
 	}
@@ -83,23 +79,13 @@ func getNewTestDB(dir string,
 	return db
 }
 
-func deleteTestDB(fs vfs.IFS) {
-	if err := fs.RemoveAll(RDBTestDirectory); err != nil {
-		panic(err)
-	}
-}
-
 func runLogDBTestAs(t *testing.T,
 	batched bool, tf func(t *testing.T, db raftio.ILogDB), fs vfs.IFS) {
 	defer leaktest.AfterTest(t)()
+	testDir := t.TempDir()
 	dir := "db-dir"
 	lldir := "wal-db-dir"
-	d := fs.PathJoin(RDBTestDirectory, dir)
-	lld := fs.PathJoin(RDBTestDirectory, lldir)
-	require.NoError(t, fs.RemoveAll(d))
-	require.NoError(t, fs.RemoveAll(lld))
-	db := getNewTestDB(dir, lldir, batched, fs)
-	defer deleteTestDB(fs)
+	db := getNewTestDB(testDir, dir, lldir, batched, fs)
 	defer func() {
 		require.NoError(t, db.Close())
 	}()
@@ -863,7 +849,7 @@ func testAllWantedEntriesAreAccessible(t *testing.T,
 		}
 		ud := pb.Update{
 			EntriesToSave: ents,
-			State:         pb.State{Commit: 1},
+			Commit:        1,
 			ShardID:       shardID,
 			ReplicaID:     replicaID,
 		}
@@ -889,22 +875,16 @@ func testAllWantedEntriesAreAccessible(t *testing.T,
 func TestRemoveEntriesTo(t *testing.T) {
 	fs := vfs.GetTestFS()
 	defer leaktest.AfterTest(t)()
+	testDir := t.TempDir()
 	dir := "db-dir"
 	lldir := "wal-db-dir"
-	d := fs.PathJoin(RDBTestDirectory, dir)
-	lld := fs.PathJoin(RDBTestDirectory, lldir)
-	require.NoError(t, fs.RemoveAll(d))
-	require.NoError(t, fs.RemoveAll(lld))
-	defer func() {
-		require.NoError(t, fs.RemoveAll(RDBTestDirectory))
-	}()
 	shardID := uint64(0)
 	replicaID := uint64(4)
 	ents := make([]pb.Entry, 0)
 	maxIndex := uint64(1024)
 	skipSizeCheck := false
 	func() {
-		db := getNewTestDB(dir, lldir, false, fs)
+		db := getNewTestDB(testDir, dir, lldir, false, fs)
 		sdb, ok := db.(*ShardedDB)
 		require.True(t, ok)
 		name := sdb.Name()
@@ -916,7 +896,7 @@ func TestRemoveEntriesTo(t *testing.T) {
 		defer func() {
 			require.NoError(t, db.Close())
 		}()
-		for i := uint64(0); i < maxIndex; i++ {
+		for i := range maxIndex {
 			e := pb.Entry{
 				Term:  1,
 				Index: i,
@@ -927,7 +907,7 @@ func TestRemoveEntriesTo(t *testing.T) {
 		}
 		ud := pb.Update{
 			EntriesToSave: ents,
-			State:         pb.State{Commit: 1},
+			Commit:        1,
 			ShardID:       shardID,
 			ReplicaID:     replicaID,
 		}
@@ -936,7 +916,7 @@ func TestRemoveEntriesTo(t *testing.T) {
 		require.NoError(t, db.RemoveEntriesTo(shardID, replicaID, maxIndex))
 		done, err := db.CompactEntriesTo(shardID, replicaID, maxIndex)
 		require.NoError(t, err)
-		for i := 0; i < 1000; i++ {
+		for i := range 1000 {
 			count := atomic.LoadUint64(&(sdb.completedCompactions))
 			if count == 0 {
 				time.Sleep(10 * time.Millisecond)
@@ -962,7 +942,7 @@ func TestRemoveEntriesTo(t *testing.T) {
 	// https://github.com/google/leveldb/issues/573
 	// https://github.com/google/leveldb/issues/593
 	if !skipSizeCheck {
-		sz, err := getDirSize(RDBTestDirectory, false, fs)
+		sz, err := getDirSize(testDir, false, fs)
 		require.NoError(t, err)
 		plog.Infof("sz: %d", sz)
 		require.LessOrEqual(t, sz, int64(1024*1024))

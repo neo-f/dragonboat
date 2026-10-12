@@ -28,11 +28,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var (
-	testDataDir    = "import_test_safe_to_delete"
-	testDstDataDir = "import_test_dst_safe_to_delete"
-)
-
 func TestCheckImportSettings(t *testing.T) {
 	members := make(map[uint64]string)
 	err := checkImportSettings(config.NodeHostConfig{}, members, 1)
@@ -50,17 +45,13 @@ func TestCheckImportSettings(t *testing.T) {
 
 func TestGetSnapshotFilenames(t *testing.T) {
 	fs := vfs.GetTestFS()
-	require.NoError(t, fs.RemoveAll(testDataDir))
+	testDataDir := t.TempDir()
 	require.NoError(t, fs.MkdirAll(testDataDir, 0755))
 
-	defer func() {
-		require.NoError(t, fs.RemoveAll(testDataDir))
-	}()
-
-	for i := 0; i < 16; i++ {
+	for i := range 16 {
 		fn := fmt.Sprintf("%d.%s", i, server.SnapshotFileSuffix)
 		dst := fs.PathJoin(testDataDir, fn)
-		f, err := fs.Create(dst)
+		f, err := fs.Create(dst, vfs.WriteCategoryUnspecified)
 		require.NoError(t, err, "failed to create file")
 		require.NoError(t, f.Close(), "failed to close file")
 	}
@@ -80,16 +71,12 @@ func TestGetSnapshotFilenames(t *testing.T) {
 
 func TestSnapshotFilepath(t *testing.T) {
 	fs := vfs.GetTestFS()
-	require.NoError(t, fs.RemoveAll(testDataDir))
+	testDataDir := t.TempDir()
 	require.NoError(t, fs.MkdirAll(testDataDir, 0755))
-
-	defer func() {
-		require.NoError(t, fs.RemoveAll(testDataDir))
-	}()
 
 	fn := fmt.Sprintf("testdata.%s", server.SnapshotFileSuffix)
 	dst := fs.PathJoin(testDataDir, fn)
-	f, err := fs.Create(dst)
+	f, err := fs.Create(dst, vfs.WriteCategoryUnspecified)
 	require.NoError(t, err, "failed to create file")
 	require.NoError(t, f.Close(), "failed to close file")
 
@@ -125,7 +112,7 @@ func TestCheckMembers(t *testing.T) {
 }
 
 func createTestDataFile(path string, sz uint64, fs vfs.IFS) error {
-	f, err := fs.Create(path)
+	f, err := fs.Create(path, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		return err
 	}
@@ -142,17 +129,10 @@ func createTestDataFile(path string, sz uint64, fs vfs.IFS) error {
 
 func TestCopySnapshot(t *testing.T) {
 	fs := vfs.GetTestFS()
-	require.NoError(t, fs.RemoveAll(testDataDir))
-	require.NoError(t, fs.RemoveAll(testDstDataDir))
+	testDataDir := t.TempDir()
+	testDstDataDir := t.TempDir()
 	require.NoError(t, fs.MkdirAll(testDataDir, 0755))
 	require.NoError(t, fs.MkdirAll(testDstDataDir, 0755))
-
-	defer func() {
-		require.NoError(t, fs.RemoveAll(testDataDir))
-	}()
-	defer func() {
-		require.NoError(t, fs.RemoveAll(testDstDataDir))
-	}()
 
 	src := fs.PathJoin(testDataDir, "test.gbsnap")
 	require.NoError(t, createTestDataFile(src, 1024, fs),
@@ -182,16 +162,12 @@ func TestCopySnapshot(t *testing.T) {
 
 func TestCopySnapshotFile(t *testing.T) {
 	fs := vfs.GetTestFS()
-	require.NoError(t, fs.RemoveAll(testDataDir))
+	testDataDir := t.TempDir()
 	require.NoError(t, fs.MkdirAll(testDataDir, 0755))
-
-	defer func() {
-		require.NoError(t, fs.RemoveAll(testDataDir))
-	}()
 
 	src := fs.PathJoin(testDataDir, "test.data")
 	dst := fs.PathJoin(testDataDir, "test.data.copied")
-	f, err := fs.Create(src)
+	f, err := fs.Create(src, vfs.WriteCategoryUnspecified)
 	require.NoError(t, err, "failed to create test file")
 
 	data := make([]byte, 125)
@@ -217,12 +193,8 @@ func TestCopySnapshotFile(t *testing.T) {
 
 func TestMissingMetadataFileIsReported(t *testing.T) {
 	fs := vfs.GetTestFS()
-	require.NoError(t, fs.RemoveAll(testDataDir))
+	testDataDir := t.TempDir()
 	require.NoError(t, fs.MkdirAll(testDataDir, 0755))
-
-	defer func() {
-		require.NoError(t, fs.RemoveAll(testDataDir))
-	}()
 
 	_, err := getSnapshotRecord(testDataDir, "test.data", fs)
 	require.Error(t, err, "failed to report error")

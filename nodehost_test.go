@@ -23,11 +23,12 @@ import (
 	"fmt"
 	"io"
 	"math"
-	mathrand "math/rand"
+	mathrand "math/rand/v2"
 	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -95,12 +96,12 @@ func getRTTMillisecond(fs vfs.IFS, dir string) uint64 {
 }
 
 func calcRTTMillisecond(fs vfs.IFS, dir string) uint64 {
-	testFile := fs.PathJoin(dir, ".dragonboat_test_file_safe_to_delete")
+	testFile := fs.PathJoin(dir, ".dragonboat_test_file")
 	defer func() {
 		_ = fs.RemoveAll(testFile)
 	}()
 	_ = fs.MkdirAll(dir, 0755)
-	f, err := fs.Create(testFile)
+	f, err := fs.Create(testFile, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		panic(err)
 	}
@@ -112,7 +113,7 @@ func calcRTTMillisecond(fs vfs.IFS, dir string) uint64 {
 	data := make([]byte, 512)
 	total := uint64(0)
 	repeat := 5
-	for i := 0; i < repeat; i++ {
+	for range repeat {
 		if _, err := f.Write(data); err != nil {
 			panic(err)
 		}
@@ -162,11 +163,11 @@ func reportLeakedFD(fs vfs.IFS, t *testing.T) {
 	vfs.ReportLeakedFD(fs, t)
 }
 
-func getTestNodeHostConfig(fs vfs.IFS) *config.NodeHostConfig {
+func getTestNodeHostConfig(fs vfs.IFS, dir string) *config.NodeHostConfig {
 	cfg := &config.NodeHostConfig{
-		WALDir:              singleNodeHostTestDir,
-		NodeHostDir:         singleNodeHostTestDir,
-		RTTMillisecond:      getRTTMillisecond(fs, singleNodeHostTestDir),
+		WALDir:              dir,
+		NodeHostDir:         dir,
+		RTTMillisecond:      getRTTMillisecond(fs, dir),
 		RaftAddress:         singleNodeHostTestAddr,
 		Expert:              getTestExpertConfig(fs),
 		SystemEventListener: &testSysEventListener{},
@@ -185,7 +186,7 @@ func getTestConfig() *config.Config {
 }
 
 func waitNodeInfoEvent(t *testing.T, f func() []raftio.NodeInfo, count int) {
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		if len(f()) == count {
 			return
 		}
@@ -197,7 +198,7 @@ func waitNodeInfoEvent(t *testing.T, f func() []raftio.NodeInfo, count int) {
 func waitSnapshotInfoEvent(t *testing.T,
 	f func() []raftio.SnapshotInfo,
 	count int) {
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		if len(f()) == count {
 			return
 		}
@@ -396,7 +397,7 @@ func (t *TimeoutStateMachine) Update(e sm.Entry) (sm.Result, error) {
 	return sm.Result{}, nil
 }
 
-func (t *TimeoutStateMachine) Lookup(data interface{}) (interface{}, error) {
+func (t *TimeoutStateMachine) Lookup(data any) (any, error) {
 	if t.lookupDelay > 0 {
 		time.Sleep(time.Duration(t.lookupDelay) * time.Millisecond)
 	}
@@ -568,14 +569,11 @@ func runNodeHostTest(t *testing.T, to *testOption, fs vfs.IFS) {
 		if !to.fsErrorInjection {
 			defer leaktest.AfterTest(t)()
 		}
-		// FIXME:
-		// the following RemoveAll call will fail on windows after running error
-		// injection tests as some pebble log files are not closed
-		_ = fs.RemoveAll(singleNodeHostTestDir)
+		testDir := t.TempDir()
 		if to.bt != nil {
 			to.bt()
 		}
-		nhc := getTestNodeHostConfig(fs)
+		nhc := getTestNodeHostConfig(fs, testDir)
 		if to.updateNodeHostConfig != nil {
 			nhc = to.updateNodeHostConfig(nhc)
 		}
@@ -636,9 +634,9 @@ func createProposalsToTriggerSnapshot(t *testing.T,
 	nh *NodeHost,
 	count uint64,
 	timeoutExpected bool) {
-	for i := uint64(0); i < count; i++ {
+	for range count {
 		pto := lpto(nh)
-		ctx, cancel := context.WithTimeout(context.Background(), pto)
+		ctx, cancel := context.WithTimeout(t.Context(), pto)
 		cs, err := nh.SyncGetSession(ctx, 1)
 		if err != nil {
 			if err == ErrTimeout {
@@ -664,17 +662,11 @@ func createProposalsToTriggerSnapshot(t *testing.T,
 }
 
 func runNodeHostTestDC(t *testing.T,
-	f func(),
-	removeDir bool,
+	f func(testDir string),
 	fs vfs.IFS) {
 	defer leaktest.AfterTest(t)()
-	defer func() {
-		require.NoError(t, fs.RemoveAll(singleNodeHostTestDir))
-	}()
-	if removeDir {
-		require.NoError(t, fs.RemoveAll(singleNodeHostTestDir))
-	}
-	f()
+	testDir := t.TempDir()
+	f(testDir)
 	reportLeakedFD(fs, t)
 }
 
@@ -796,11 +788,11 @@ func TestAddressValidatorCanBeSet(t *testing.T) {
 		},
 		tf: func(nh *NodeHost) {
 			pto := lpto(nh)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			err := nh.SyncRequestAddReplica(ctx, 1, 100, "localhost:12345", 0)
 			cancel()
 			require.ErrorIs(t, err, ErrInvalidAddress)
-			ctx, cancel = context.WithTimeout(context.Background(), pto)
+			ctx, cancel = context.WithTimeout(t.Context(), pto)
 			err = nh.SyncRequestAddReplica(ctx, 1, 100, "localhost:12346", 0)
 			cancel()
 			require.NoError(t, err, "failed to add node")
@@ -830,9 +822,10 @@ func TestMediumSizedClusterGossip(t *testing.T) {
 		t.Skip("Skipping long test")
 	}
 	defer leaktest.AfterTest(t)()
-	for i := 0; i < 16; i++ {
+	testDir := t.TempDir()
+	for i := range 16 {
 		fs := vfs.GetTestFS()
-		dir := fs.PathJoin(singleNodeHostTestDir, fmt.Sprintf("nh%d", i))
+		dir := fs.PathJoin(testDir, fmt.Sprintf("nh%d", i))
 		cfg := config.NodeHostConfig{
 			NodeHostDir:                dir,
 			RTTMillisecond:             getRTTMillisecond(fs, dir),
@@ -868,12 +861,9 @@ func testDefaultNodeRegistryEnabled(t *testing.T,
 	addressByNodeHostID bool,
 	factory config.TransportFactory) {
 	fs := vfs.GetTestFS()
-	datadir1 := fs.PathJoin(singleNodeHostTestDir, "nh1")
-	datadir2 := fs.PathJoin(singleNodeHostTestDir, "nh2")
-	require.NoError(t, os.RemoveAll(singleNodeHostTestDir))
-	defer func() {
-		require.NoError(t, os.RemoveAll(singleNodeHostTestDir))
-	}()
+	testDir := t.TempDir()
+	datadir1 := fs.PathJoin(testDir, "nh1")
+	datadir2 := fs.PathJoin(testDir, "nh2")
 	addr1 := nodeHostTestAddr1
 	addr2 := nodeHostTestAddr2
 	nhc1 := config.NodeHostConfig{
@@ -949,8 +939,8 @@ func testDefaultNodeRegistryEnabled(t *testing.T,
 	waitForLeaderToBeElected(t, nh2, 1)
 	pto := lpto(nh1)
 	session := nh1.GetNoOPSession(1)
-	for i := 0; i < 1000; i++ {
-		ctx, cancel := context.WithTimeout(context.Background(), pto)
+	for range 1000 {
+		ctx, cancel := context.WithTimeout(t.Context(), pto)
 		if _, err := nh1.SyncPropose(ctx, session, make([]byte, 0)); err == nil {
 			cancel()
 			return
@@ -963,12 +953,9 @@ func testDefaultNodeRegistryEnabled(t *testing.T,
 
 func TestNodeHostRegistry(t *testing.T) {
 	fs := vfs.GetTestFS()
-	datadir1 := fs.PathJoin(singleNodeHostTestDir, "nh1")
-	datadir2 := fs.PathJoin(singleNodeHostTestDir, "nh2")
-	require.NoError(t, os.RemoveAll(singleNodeHostTestDir))
-	defer func() {
-		require.NoError(t, os.RemoveAll(singleNodeHostTestDir))
-	}()
+	testDir := t.TempDir()
+	datadir1 := fs.PathJoin(testDir, "nh1")
+	datadir2 := fs.PathJoin(testDir, "nh2")
 	addr1 := nodeHostTestAddr1
 	addr2 := nodeHostTestAddr2
 	nhc1 := config.NodeHostConfig{
@@ -1037,7 +1024,7 @@ func TestNodeHostRegistry(t *testing.T) {
 	waitForLeaderToBeElected(t, nh2, 2)
 	waitForLeaderToBeElected(t, nh2, 3)
 	good := false
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		r1, ok := nh1.GetNodeHostRegistry()
 		assert.True(t, ok)
 		r2, ok := nh2.GetNodeHostRegistry()
@@ -1053,7 +1040,7 @@ func TestNodeHostRegistry(t *testing.T) {
 	rc.ShardID = 100
 	require.NoError(t, nh2.StartReplica(peers, false, createSM, rc))
 	waitForLeaderToBeElected(t, nh2, 100)
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		r1, ok := nh1.GetNodeHostRegistry()
 		assert.True(t, ok)
 		r2, ok := nh2.GetNodeHostRegistry()
@@ -1075,12 +1062,9 @@ func TestNodeHostRegistry(t *testing.T) {
 
 func TestGossipCanHandleDynamicRaftAddress(t *testing.T) {
 	fs := vfs.GetTestFS()
-	datadir1 := fs.PathJoin(singleNodeHostTestDir, "nh1")
-	datadir2 := fs.PathJoin(singleNodeHostTestDir, "nh2")
-	require.NoError(t, os.RemoveAll(singleNodeHostTestDir))
-	defer func() {
-		require.NoError(t, os.RemoveAll(singleNodeHostTestDir))
-	}()
+	testDir := t.TempDir()
+	datadir1 := fs.PathJoin(testDir, "nh1")
+	datadir2 := fs.PathJoin(testDir, "nh2")
 	addr1 := nodeHostTestAddr1
 	addr2 := nodeHostTestAddr2
 	nhc1 := config.NodeHostConfig{
@@ -1147,8 +1131,8 @@ func TestGossipCanHandleDynamicRaftAddress(t *testing.T) {
 	session := nh1.GetNoOPSession(1)
 	testProposal := func() {
 		done := false
-		for i := 0; i < 100; i++ {
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+		for range 100 {
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			_, err := nh1.SyncPropose(ctx, session, make([]byte, 0))
 			cancel()
 			if err != nil {
@@ -1215,12 +1199,9 @@ func (trf *testRegistryFactory) Create(nhid string,
 
 func TestExternalNodeRegistryFunction(t *testing.T) {
 	fs := vfs.GetTestFS()
-	datadir1 := fs.PathJoin(singleNodeHostTestDir, "nh1")
-	datadir2 := fs.PathJoin(singleNodeHostTestDir, "nh2")
-	require.NoError(t, os.RemoveAll(singleNodeHostTestDir))
-	defer func() {
-		require.NoError(t, os.RemoveAll(singleNodeHostTestDir))
-	}()
+	testDir := t.TempDir()
+	datadir1 := fs.PathJoin(testDir, "nh1")
+	datadir2 := fs.PathJoin(testDir, "nh2")
 	addr1 := nodeHostTestAddr1
 	addr2 := nodeHostTestAddr2
 	nhc1 := config.NodeHostConfig{
@@ -1282,8 +1263,8 @@ func TestExternalNodeRegistryFunction(t *testing.T) {
 	session := nh1.GetNoOPSession(1)
 	testProposal := func() {
 		done := false
-		for i := 0; i < 100; i++ {
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+		for range 100 {
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			_, err := nh1.SyncPropose(ctx, session, make([]byte, 0))
 			cancel()
 			if err != nil {
@@ -1344,7 +1325,6 @@ var (
 	nodeHostTestAddr1      = fmt.Sprintf("localhost:%d", getTestPort())
 	nodeHostTestAddr2      = fmt.Sprintf("localhost:%d", getTestPort()+1)
 	nodeHostTestAddr3      = fmt.Sprintf("localhost:%d", getTestPort()+2)
-	singleNodeHostTestDir  = "single_nodehost_test_dir_safe_to_delete"
 )
 
 type PST struct {
@@ -1370,7 +1350,7 @@ func (n *PST) getRestored() bool {
 func (n *PST) Close() error { return nil }
 
 // Lookup locally looks up the data.
-func (n *PST) Lookup(key interface{}) (interface{}, error) {
+func (n *PST) Lookup(key any) (any, error) {
 	return make([]byte, 1), nil
 }
 
@@ -1484,14 +1464,11 @@ func singleConcurrentNodeHostTest(t *testing.T,
 	snapshotEntry uint64,
 	concurrent bool,
 	fs vfs.IFS) {
-	defer func() {
-		require.NoError(t, fs.RemoveAll(singleNodeHostTestDir))
-	}()
+	testDir := t.TempDir()
 	func() {
 		defer leaktest.AfterTest(t)()
-		require.NoError(t, fs.RemoveAll(singleNodeHostTestDir))
 		nh, err := createConcurrentTestNodeHost(singleNodeHostTestAddr,
-			singleNodeHostTestDir, snapshotEntry, concurrent, fs)
+			testDir, snapshotEntry, concurrent, fs)
 		require.NoError(t, err, "failed to create nodehost")
 		defer func() {
 			nh.Close()
@@ -1507,14 +1484,11 @@ func singleConcurrentNodeHostTest(t *testing.T,
 func twoFakeDiskNodeHostTest(t *testing.T,
 	tf func(t *testing.T, nh1 *NodeHost, nh2 *NodeHost),
 	fs vfs.IFS) {
-	defer func() {
-		require.NoError(t, fs.RemoveAll(singleNodeHostTestDir))
-	}()
+	testDir := t.TempDir()
 	func() {
 		defer leaktest.AfterTest(t)()
-		nh1dir := fs.PathJoin(singleNodeHostTestDir, "nh1")
-		nh2dir := fs.PathJoin(singleNodeHostTestDir, "nh2")
-		require.NoError(t, fs.RemoveAll(singleNodeHostTestDir))
+		nh1dir := fs.PathJoin(testDir, "nh1")
+		nh2dir := fs.PathJoin(testDir, "nh2")
 		nh1, nh2, err := createFakeDiskTwoTestNodeHosts(nodeHostTestAddr1,
 			nodeHostTestAddr2, nh1dir, nh2dir, fs)
 		require.NoError(t, err, "failed to create nodehost")
@@ -1617,7 +1591,7 @@ func createRateLimitedTwoTestNodeHosts(addr1 string,
 	var leaderNh *NodeHost
 	var followerNh *NodeHost
 
-	for i := 0; i < 200; i++ {
+	for range 200 {
 		leaderID, _, ready, err := nh1.GetLeaderID(1)
 		if err == nil && ready {
 			if leaderID == 1 {
@@ -1644,14 +1618,11 @@ func rateLimitedTwoNodeHostTest(t *testing.T,
 		n1 *tests.NoOP,
 		n2 *tests.NoOP),
 	fs vfs.IFS) {
-	defer func() {
-		require.NoError(t, fs.RemoveAll(singleNodeHostTestDir))
-	}()
+	testDir := t.TempDir()
 	func() {
-		nh1dir := fs.PathJoin(singleNodeHostTestDir, "nh1")
-		nh2dir := fs.PathJoin(singleNodeHostTestDir, "nh2")
+		nh1dir := fs.PathJoin(testDir, "nh1")
+		nh2dir := fs.PathJoin(testDir, "nh2")
 		defer leaktest.AfterTest(t)()
-		require.NoError(t, fs.RemoveAll(singleNodeHostTestDir))
 		nh1, nh2, n1, n2, err := createRateLimitedTwoTestNodeHosts(nodeHostTestAddr1,
 			nodeHostTestAddr2, nh1dir, nh2dir, fs)
 		require.NoError(t, err, "failed to create nodehost2")
@@ -1665,7 +1636,7 @@ func rateLimitedTwoNodeHostTest(t *testing.T,
 }
 
 func waitForLeaderToBeElected(t *testing.T, nh *NodeHost, shardID uint64) {
-	for i := 0; i < 200; i++ {
+	for range 200 {
 		_, term, ready, err := nh.GetLeaderID(shardID)
 		if err == nil && ready {
 			if term == 0 {
@@ -1687,7 +1658,7 @@ func TestJoinedShardCanBeRestartedOrJoinedAgain(t *testing.T) {
 			peers := make(map[uint64]string)
 			newPST := func(uint64, uint64) sm.IStateMachine { return &PST{} }
 			require.NoError(t, nh.StopShard(1), "failed to stop the shard")
-			for i := 0; i < 1000; i++ {
+			for range 1000 {
 				err := nh.StartReplica(peers, true, newPST, *cfg)
 				if err == nil {
 					return
@@ -1719,7 +1690,7 @@ func TestCompactionCanBeRequested(t *testing.T) {
 		tf: func(nh *NodeHost) {
 			pto := lpto(nh)
 			session := nh.GetNoOPSession(1)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			defer cancel()
 			_, err := nh.SyncPropose(ctx, session, []byte("test-data"))
 			require.NoError(t, err, "failed to make proposal")
@@ -1729,7 +1700,7 @@ func TestCompactionCanBeRequested(t *testing.T) {
 			}
 			_, err = nh.SyncRequestSnapshot(ctx, 1, opt)
 			require.NoError(t, err, "failed to request snapshot")
-			for i := 0; i < 100; i++ {
+			for range 100 {
 				op, err := nh.RequestCompaction(1, 1)
 				if err == ErrRejected {
 					time.Sleep(100 * time.Millisecond)
@@ -1831,14 +1802,14 @@ func TestGetRequestState(t *testing.T) {
 		}
 		result := RequestResult{code: tt.code}
 		rs.notify(result)
-		_, err := getRequestState(context.TODO(), rs)
+		_, err := getRequestState(t.Context(), rs)
 		assert.ErrorIs(t, err, tt.err)
 	}
 }
 
 func TestGetRequestStateTimeoutAndCancel(t *testing.T) {
 	func() {
-		ctx, cancel := context.WithTimeout(context.Background(),
+		ctx, cancel := context.WithTimeout(t.Context(),
 			time.Millisecond)
 		defer cancel()
 		time.Sleep(2 * time.Millisecond)
@@ -1850,7 +1821,7 @@ func TestGetRequestStateTimeoutAndCancel(t *testing.T) {
 	}()
 
 	func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
+		ctx, cancel := context.WithTimeout(t.Context(), time.Hour)
 		cancel()
 		rs := &RequestState{
 			CompletedC: make(chan RequestResult, 1),
@@ -1900,7 +1871,7 @@ func TestInvalidAddressIsRejected(t *testing.T) {
 		defaultTestNode: true,
 		tf: func(nh *NodeHost) {
 			pto := pto(nh)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			defer cancel()
 			err := nh.SyncRequestAddReplica(ctx, 1, 100, "a1", 0)
 			assert.ErrorIs(t, err, ErrInvalidAddress)
@@ -1915,12 +1886,12 @@ func TestInvalidContextDeadlineIsReported(t *testing.T) {
 		defaultTestNode: true,
 		tf: func(nh *NodeHost) {
 			pto := lpto(nh)
-			rctx, rcancel := context.WithTimeout(context.Background(), pto)
+			rctx, rcancel := context.WithTimeout(t.Context(), pto)
 			rcs, err := nh.SyncGetSession(rctx, 1)
 			rcancel()
 			require.NoError(t, err, "failed to get regular session")
 			// 8 * time.Millisecond is smaller than the smallest RTTMillisecond
-			ctx, cancel := context.WithTimeout(context.Background(),
+			ctx, cancel := context.WithTimeout(t.Context(),
 				8*time.Millisecond)
 			defer cancel()
 			cs := nh.GetNoOPSession(1)
@@ -1985,7 +1956,7 @@ func TestGetShardMembership(t *testing.T) {
 		defaultTestNode: true,
 		tf: func(nh *NodeHost) {
 			pto := pto(nh)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			defer cancel()
 			_, err := nh.SyncGetShardMembership(ctx, 1)
 			require.NoError(t, err, "failed to get shard membership")
@@ -2000,7 +1971,7 @@ func TestRegisterASessionTwiceWillBeReported(t *testing.T) {
 		defaultTestNode: true,
 		tf: func(nh *NodeHost) {
 			pto := lpto(nh)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			defer cancel()
 			cs, err := nh.SyncGetSession(ctx, 1)
 			assert.NoError(t, err, "failed to get client session")
@@ -2021,7 +1992,7 @@ func TestUnregisterNotRegisterClientSessionWillBeReported(t *testing.T) {
 		defaultTestNode: true,
 		tf: func(nh *NodeHost) {
 			pto := lpto(nh)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			defer cancel()
 			cs, err := nh.SyncGetSession(ctx, 1)
 			assert.NoError(t, err, "failed to get client session")
@@ -2047,9 +2018,9 @@ func TestSnapshotFilePayloadChecksumIsSaved(t *testing.T) {
 			logdb := nh.mu.logdb
 			snapshotted := false
 			var snapshot pb.Snapshot
-			for i := 0; i < 1000; i++ {
+			for range 1000 {
 				pto := pto(nh)
-				ctx, cancel := context.WithTimeout(context.Background(), pto)
+				ctx, cancel := context.WithTimeout(t.Context(), pto)
 				_, err := nh.SyncPropose(ctx, cs, []byte("test-data"))
 				cancel()
 				if err != nil {
@@ -2150,7 +2121,7 @@ func TestNodeHostSyncIOAPIs(t *testing.T) {
 		tf: func(nh *NodeHost) {
 			cs := nh.GetNoOPSession(1)
 			pto := lpto(nh)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			defer cancel()
 			v, err := nh.SyncPropose(ctx, cs, make([]byte, 128))
 			require.NoError(t, err, "make proposal failed")
@@ -2182,7 +2153,7 @@ func TestEntryCompression(t *testing.T) {
 		tf: func(nh *NodeHost) {
 			cs := nh.GetNoOPSession(1)
 			pto := pto(nh)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			defer cancel()
 			_, err := nh.SyncPropose(ctx, cs, make([]byte, 1024))
 			require.NoError(t, err, "make proposal failed")
@@ -2216,7 +2187,7 @@ func TestOrderedMembershipChange(t *testing.T) {
 		tf: func(nh *NodeHost) {
 			pto := pto(nh)
 			{
-				ctx, cancel := context.WithTimeout(context.Background(), 2*pto)
+				ctx, cancel := context.WithTimeout(t.Context(), 2*pto)
 				defer cancel()
 				m, err := nh.SyncGetShardMembership(ctx, 1)
 				require.NoError(t, err, "get membership failed")
@@ -2225,7 +2196,7 @@ func TestOrderedMembershipChange(t *testing.T) {
 				assert.Error(t, err, "unexpectedly completed")
 			}
 			{
-				ctx, cancel := context.WithTimeout(context.Background(), 2*pto)
+				ctx, cancel := context.WithTimeout(t.Context(), 2*pto)
 				defer cancel()
 				m, err := nh.SyncGetShardMembership(ctx, 1)
 				require.NoError(t, err, "get membership failed")
@@ -2244,7 +2215,7 @@ func TestSyncRequestDeleteReplica(t *testing.T) {
 		defaultTestNode: true,
 		tf: func(nh *NodeHost) {
 			pto := lpto(nh)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			defer cancel()
 			err := nh.SyncRequestDeleteReplica(ctx, 1, 2, 0)
 			require.NoError(t, err, "failed to delete node")
@@ -2265,7 +2236,7 @@ func TestSyncRequestAddReplica(t *testing.T) {
 		defaultTestNode: true,
 		tf: func(nh *NodeHost) {
 			pto := pto(nh)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			defer cancel()
 			err := nh.SyncRequestAddReplica(ctx, 1, 2, "localhost:25000", 0)
 			assert.NoError(t, err, "failed to add node")
@@ -2280,7 +2251,7 @@ func TestSyncRequestAddNonVoting(t *testing.T) {
 		defaultTestNode: true,
 		tf: func(nh *NodeHost) {
 			pto := pto(nh)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			defer cancel()
 			err := nh.SyncRequestAddNonVoting(ctx, 1, 2, "localhost:25000", 0)
 			assert.NoError(t, err, "failed to add nonVoting")
@@ -2365,7 +2336,7 @@ func TestNodeHostAddNonVotingRemoveNode(t *testing.T) {
 			require.NoError(t, err, "failed to add node")
 			v := <-rs.ResultC()
 			require.True(t, v.Completed(), "failed to complete add node")
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			defer cancel()
 			membership, err := nh.SyncGetShardMembership(ctx, 1)
 			require.NoError(t, err, "failed to get shard membership")
@@ -2379,7 +2350,7 @@ func TestNodeHostAddNonVotingRemoveNode(t *testing.T) {
 			require.NoError(t, err, "failed to remove node")
 			v = <-rs.ResultC()
 			require.True(t, v.Completed(), "failed to complete remove node")
-			ctx, cancel = context.WithTimeout(context.Background(), pto)
+			ctx, cancel = context.WithTimeout(t.Context(), pto)
 			defer cancel()
 			membership, err = nh.SyncGetShardMembership(ctx, 1)
 			require.NoError(t, err, "failed to get shard membership")
@@ -2426,7 +2397,7 @@ func TestOnDiskStateMachineDoesNotSupportClientSession(t *testing.T) {
 		tf: func(nh *NodeHost) {
 			require.Panics(t, func() {
 				pto := pto(nh)
-				ctx, cancel := context.WithTimeout(context.Background(), pto)
+				ctx, cancel := context.WithTimeout(t.Context(), pto)
 				_, err := nh.SyncGetSession(ctx, 1)
 				cancel()
 				assert.Error(t, err, "managed to get new session")
@@ -2480,7 +2451,7 @@ func TestStartReplicaWaitForReadiness(t *testing.T) {
 				var n *node
 				var ok bool
 
-				for i := 0; i < 10; i++ {
+				for range 10 {
 					n, ok = nh.getShard(cfg.ShardID)
 					if ok {
 						break
@@ -2531,7 +2502,7 @@ func testOnDiskStateMachineCanTakeDummySnapshot(t *testing.T, compressed bool) {
 			var ss pb.Snapshot
 			for i := uint64(2); i < 1000; i++ {
 				pto := pto(nh)
-				ctx, cancel := context.WithTimeout(context.Background(), pto)
+				ctx, cancel := context.WithTimeout(t.Context(), pto)
 				_, err := nh.SyncPropose(ctx, session, []byte("test-data"))
 				cancel()
 				if err != nil {
@@ -2601,7 +2572,7 @@ func TestOnDiskSMCanStreamSnapshot(t *testing.T) {
 		session := nh1.GetNoOPSession(1)
 		for i := uint64(2); i < 1000; i++ {
 			pto := pto(nh1)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			_, err := nh1.SyncPropose(ctx, session, []byte("test-data"))
 			cancel()
 			if err != nil {
@@ -2644,7 +2615,7 @@ func TestOnDiskSMCanStreamSnapshot(t *testing.T) {
 		logdb = nh2.mu.logdb
 		waitForLeaderToBeElected(t, nh2, 1)
 		for i := uint64(2); i < 1000; i++ {
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			_, err := nh2.SyncPropose(ctx, session, []byte("test-data"))
 			cancel()
 			plog.Infof("nh2 proposal result: %v", err)
@@ -2704,8 +2675,8 @@ func TestConcurrentStateMachineLookup(t *testing.T) {
 		stopper := syncutil.NewStopper()
 		pto := pto(nh)
 		stopper.RunWorker(func() {
-			for i := 0; i < 10000; i++ {
-				ctx, cancel := context.WithTimeout(context.Background(), pto)
+			for range 10000 {
+				ctx, cancel := context.WithTimeout(t.Context(), pto)
 				session := nh.GetNoOPSession(shardID)
 				_, err := nh.SyncPropose(ctx, session, []byte("test"))
 				cancel()
@@ -2719,7 +2690,7 @@ func TestConcurrentStateMachineLookup(t *testing.T) {
 			}
 		})
 		stopper.RunWorker(func() {
-			for i := 0; i < 10000; i++ {
+			for i := range 10000 {
 				if i%5 == 0 {
 					time.Sleep(time.Millisecond)
 				}
@@ -2768,8 +2739,8 @@ func TestConcurrentStateMachineSaveSnapshot(t *testing.T) {
 		result := make(map[uint64]struct{})
 		session := nh.GetNoOPSession(shardID)
 		pto := pto(nh)
-		for i := 0; i < 10000; i++ {
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+		for range 10000 {
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			v, err := nh.SyncPropose(ctx, session, []byte("test"))
 			cancel()
 			require.NoError(t, err, "failed to make proposal")
@@ -2789,9 +2760,9 @@ func TestErrorCanBeReturnedWhenLookingUpConcurrentStateMachine(t *testing.T) {
 	tf := func(t *testing.T, nh *NodeHost) {
 		nhc := nh.NodeHostConfig()
 		shardID := 1 + nhc.Expert.Engine.ApplyShards
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			pto := pto(nh)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			_, err := nh.SyncRead(ctx, shardID, []byte("test"))
 			cancel()
 			require.ErrorIs(t, err, sm.ErrSnapshotStopped, "error not returned")
@@ -2815,8 +2786,8 @@ func TestRegularStateMachineDoesNotAllowConucrrentUpdate(t *testing.T) {
 		stopper := syncutil.NewStopper()
 		pto := pto(nh)
 		stopper.RunWorker(func() {
-			for i := 0; i < 100; i++ {
-				ctx, cancel := context.WithTimeout(context.Background(), pto)
+			for range 100 {
+				ctx, cancel := context.WithTimeout(t.Context(), pto)
 				session := nh.GetNoOPSession(1)
 				_, err := nh.SyncPropose(ctx, session, []byte("test"))
 				if err != nil {
@@ -2829,8 +2800,8 @@ func TestRegularStateMachineDoesNotAllowConucrrentUpdate(t *testing.T) {
 			}
 		})
 		stopper.RunWorker(func() {
-			for i := 0; i < 100; i++ {
-				ctx, cancel := context.WithTimeout(context.Background(), pto)
+			for range 100 {
+				ctx, cancel := context.WithTimeout(t.Context(), pto)
 				result, err := nh.SyncRead(ctx, 1, []byte("test"))
 				cancel()
 				if err != nil {
@@ -2856,8 +2827,8 @@ func TestRegularStateMachineDoesNotAllowConcurrentSaveSnapshot(t *testing.T) {
 		result := make(map[uint64]struct{})
 		session := nh.GetNoOPSession(1)
 		pto := pto(nh)
-		for i := 0; i < 50; i++ {
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+		for range 50 {
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			v, err := nh.SyncPropose(ctx, session, []byte("test"))
 			cancel()
 			if err != nil {
@@ -2891,10 +2862,10 @@ func TestLogDBRateLimit(t *testing.T) {
 				t.Skip("skipped, using tan logdb")
 			}
 			rateLimited := false
-			for i := 0; i < 10240; i++ {
+			for range 10240 {
 				pto := pto(nh)
 				session := nh.GetNoOPSession(1)
-				ctx, cancel := context.WithTimeout(context.Background(), pto)
+				ctx, cancel := context.WithTimeout(t.Context(), pto)
 				_, err := nh.SyncPropose(ctx, session, make([]byte, 512))
 				cancel()
 				if err == ErrSystemBusy {
@@ -2922,7 +2893,7 @@ func TestTooBigPayloadIsRejectedWhenRateLimited(t *testing.T) {
 			bigPayload := make([]byte, 1024*1024)
 			session := nh.GetNoOPSession(1)
 			pto := pto(nh)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			_, err := nh.SyncPropose(ctx, session, bigPayload)
 			cancel()
 			require.Equal(t, ErrPayloadTooBig, err,
@@ -2944,9 +2915,9 @@ func TestProposalsCanBeMadeWhenRateLimited(t *testing.T) {
 		},
 		tf: func(nh *NodeHost) {
 			session := nh.GetNoOPSession(1)
-			for i := 0; i < 16; i++ {
+			for range 16 {
 				pto := pto(nh)
-				ctx, cancel := context.WithTimeout(context.Background(), pto)
+				ctx, cancel := context.WithTimeout(t.Context(), pto)
 				_, err := nh.SyncPropose(ctx, session, make([]byte, 16))
 				cancel()
 				if err == ErrTimeout {
@@ -2961,7 +2932,7 @@ func TestProposalsCanBeMadeWhenRateLimited(t *testing.T) {
 
 func makeTestProposal(nh *NodeHost, count int) bool {
 	session := nh.GetNoOPSession(1)
-	for i := 0; i < count; i++ {
+	for range count {
 		pto := pto(nh)
 		ctx, cancel := context.WithTimeout(context.Background(), pto)
 		_, err := nh.SyncPropose(ctx, session, make([]byte, 1024))
@@ -2989,13 +2960,13 @@ func TestRateLimitCanBeTriggered(t *testing.T) {
 		tf: func(nh *NodeHost) {
 			pto := pto(nh)
 			session := nh.GetNoOPSession(1)
-			for i := 0; i < 10; i++ {
+			for range 10 {
 				stopper.RunWorker(func() {
-					for j := 0; j < 16; j++ {
+					for range 16 {
 						if atomic.LoadUint32(&limited) == 1 {
 							return
 						}
-						ctx, cancel := context.WithTimeout(context.Background(), pto)
+						ctx, cancel := context.WithTimeout(t.Context(), pto)
 						_, err := nh.SyncPropose(ctx, session, make([]byte, 1024))
 						cancel()
 						if err == ErrSystemBusy {
@@ -3021,9 +2992,9 @@ func TestRateLimitCanUseFollowerFeedback(t *testing.T) {
 		n1 *tests.NoOP, n2 *tests.NoOP) {
 		session := nh1.GetNoOPSession(1)
 		limited := false
-		for i := 0; i < 2000; i++ {
+		for range 2000 {
 			pto := pto(nh1)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			_, err := nh1.SyncPropose(ctx, session, make([]byte, 1024))
 			cancel()
 			if err == ErrShardNotReady {
@@ -3057,7 +3028,7 @@ func TestUpdateResultIsReturnedToCaller(t *testing.T) {
 		tf: func(nh *NodeHost) {
 			session := nh.GetNoOPSession(1)
 			pto := pto(nh)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			cmd := make([]byte, 1518)
 			_, err := rand.Read(cmd)
 			require.NoError(t, err)
@@ -3076,7 +3047,7 @@ func TestRaftLogQuery(t *testing.T) {
 	to := &testOption{
 		defaultTestNode: true,
 		tf: func(nh *NodeHost) {
-			for i := 0; i < 10; i++ {
+			for range 10 {
 				makeTestProposal(nh, 10)
 			}
 			_, err := nh.QueryRaftLog(1, 2, 1, math.MaxUint64)
@@ -3123,7 +3094,7 @@ func TestRaftLogQuery(t *testing.T) {
 			}
 			rs.Release()
 
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
 			opts := SnapshotOption{
 				CompactionIndex:            10,
@@ -3132,7 +3103,7 @@ func TestRaftLogQuery(t *testing.T) {
 			_, err = nh.SyncRequestSnapshot(ctx, 1, opts)
 			assert.NoError(t, err)
 			done := false
-			for i := 0; i < 1000; i++ {
+			for range 1000 {
 				func() {
 					rs, err := nh.QueryRaftLog(1, 1, 11, math.MaxUint64)
 					assert.NoError(t, err)
@@ -3209,7 +3180,7 @@ func TestIsNonVotingIsReturnedWhenNodeIsNonVoting(t *testing.T) {
 		require.NoError(t, err, "failed to start nonVoting %v", err)
 
 		nonVotingReady := false
-		for i := 0; i < 10000; i++ {
+		for range 10000 {
 			nhi := nh2.GetNodeHostInfo(DefaultNodeHostInfoOption)
 			for _, ci := range nhi.ShardInfoList {
 				if ci.Pending {
@@ -3256,13 +3227,13 @@ func TestSyncRequestSnapshot(t *testing.T) {
 		tf: func(nh *NodeHost) {
 			session := nh.GetNoOPSession(1)
 			pto := lpto(nh)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			cmd := make([]byte, 1518)
 			_, err := nh.SyncPropose(ctx, session, cmd)
 			cancel()
 			require.NoError(t, err, "failed to make proposal %v", err)
 
-			ctx, cancel = context.WithTimeout(context.Background(), pto)
+			ctx, cancel = context.WithTimeout(t.Context(), pto)
 			idx, err := nh.SyncRequestSnapshot(ctx, 1, DefaultSnapshotOption)
 			cancel()
 			require.NoError(t, err)
@@ -3286,30 +3257,26 @@ func TestSnapshotCanBeExportedAfterSnapshotting(t *testing.T) {
 		tf: func(nh *NodeHost) {
 			session := nh.GetNoOPSession(1)
 			pto := lpto(nh)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			cmd := make([]byte, 1518)
 			_, err := nh.SyncPropose(ctx, session, cmd)
 			cancel()
 			require.NoError(t, err, "failed to make proposal %v", err)
 
-			ctx, cancel = context.WithTimeout(context.Background(), pto)
+			ctx, cancel = context.WithTimeout(t.Context(), pto)
 			idx, err := nh.SyncRequestSnapshot(ctx, 1, DefaultSnapshotOption)
 			cancel()
 			require.NoError(t, err)
 			require.NotZero(t, idx, "unexpected index %d", idx)
 
-			sspath := "exported_snapshot_safe_to_delete"
-			require.NoError(t, fs.RemoveAll(sspath))
+			sspath := fs.PathJoin(t.TempDir(), "exported_snapshot")
 			require.NoError(t, fs.MkdirAll(sspath, 0755))
-			defer func() {
-				require.NoError(t, fs.RemoveAll(sspath))
-			}()
 
 			opt := SnapshotOption{
 				Exported:   true,
 				ExportPath: sspath,
 			}
-			ctx, cancel = context.WithTimeout(context.Background(), pto)
+			ctx, cancel = context.WithTimeout(t.Context(), pto)
 			exportIdx, err := nh.SyncRequestSnapshot(ctx, 1, opt)
 			cancel()
 			require.NoError(t, err)
@@ -3328,8 +3295,8 @@ func TestCanOverrideSnapshotOverhead(t *testing.T) {
 			session := nh.GetNoOPSession(1)
 			cmd := make([]byte, 1)
 			pto := pto(nh)
-			for i := 0; i < 16; i++ {
-				ctx, cancel := context.WithTimeout(context.Background(), pto)
+			for range 16 {
+				ctx, cancel := context.WithTimeout(t.Context(), pto)
 				_, err := nh.SyncPropose(ctx, session, cmd)
 				cancel()
 				if err != nil {
@@ -3356,7 +3323,7 @@ func TestCanOverrideSnapshotOverhead(t *testing.T) {
 
 			logdb := nh.mu.logdb
 			compacted := false
-			for i := 0; i < 1000; i++ {
+			for range 1000 {
 				time.Sleep(10 * time.Millisecond)
 				op, err := nh.RequestCompaction(1, 1)
 				if err == nil {
@@ -3382,7 +3349,7 @@ func TestSnapshotCanBeRequested(t *testing.T) {
 		tf: func(nh *NodeHost) {
 			pto := lpto(nh)
 			session := nh.GetNoOPSession(1)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			cmd := make([]byte, 1518)
 			_, err := nh.SyncPropose(ctx, session, cmd)
 			cancel()
@@ -3498,7 +3465,7 @@ func TestSyncRemoveData(t *testing.T) {
 			require.NoError(t, err, "failed to remove shard %v", err)
 
 			pto := lpto(nh)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			defer cancel()
 			err = nh.SyncRemoveData(ctx, 1, 1)
 			require.NoError(t, err, "sync remove data failed: %v", err)
@@ -3566,7 +3533,7 @@ func TestRemoveNodeDataRemovesAllNodeData(t *testing.T) {
 		tf: func(nh *NodeHost) {
 			session := nh.GetNoOPSession(1)
 			pto := lpto(nh)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			cmd := make([]byte, 1518)
 			_, err := nh.SyncPropose(ctx, session, cmd)
 			cancel()
@@ -3602,7 +3569,7 @@ func TestRemoveNodeDataRemovesAllNodeData(t *testing.T) {
 			require.NotZero(t, sscount, "no snapshot dir found")
 
 			removed := false
-			for i := 0; i < 1000; i++ {
+			for range 1000 {
 				err := nh.RemoveData(1, 1)
 				if err == ErrShardNotStopped {
 					time.Sleep(100 * time.Millisecond)
@@ -3667,7 +3634,7 @@ func TestSnapshotOptionIsChecked(t *testing.T) {
 				CompactionOverhead:         10,
 			}
 			assert.Equal(t, ErrInvalidOption, opts.Validate())
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 			defer cancel()
 			_, err := nh.SyncRequestSnapshot(ctx, 1, opts)
 			assert.Equal(t, ErrInvalidOption, err)
@@ -3684,16 +3651,12 @@ func TestSnapshotCanBeExported(t *testing.T) {
 	to := &testOption{
 		defaultTestNode: true,
 		tf: func(nh *NodeHost) {
-			sspath := "exported_snapshot_safe_to_delete"
-			require.NoError(t, fs.RemoveAll(sspath))
+			sspath := fs.PathJoin(t.TempDir(), "exported_snapshot")
 			require.NoError(t, fs.MkdirAll(sspath, 0755))
-			defer func() {
-				require.NoError(t, fs.RemoveAll(sspath))
-			}()
 
 			session := nh.GetNoOPSession(1)
 			pto := lpto(nh)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			cmd := make([]byte, 1518)
 			_, err := nh.SyncPropose(ctx, session, cmd)
 			cancel()
@@ -3746,9 +3709,9 @@ func TestOnDiskStateMachineCanExportSnapshot(t *testing.T) {
 		tf: func(nh *NodeHost) {
 			session := nh.GetNoOPSession(1)
 			proposed := false
-			for i := 0; i < 16; i++ {
+			for range 16 {
 				pto := pto(nh)
-				ctx, cancel := context.WithTimeout(context.Background(), pto)
+				ctx, cancel := context.WithTimeout(t.Context(), pto)
 				_, err := nh.SyncPropose(ctx, session, []byte("test-data"))
 				cancel()
 				if err == nil {
@@ -3760,12 +3723,8 @@ func TestOnDiskStateMachineCanExportSnapshot(t *testing.T) {
 			}
 			require.True(t, proposed, "failed to make proposal")
 
-			sspath := "exported_snapshot_safe_to_delete"
-			require.NoError(t, fs.RemoveAll(sspath))
+			sspath := fs.PathJoin(t.TempDir(), "exported_snapshot")
 			require.NoError(t, fs.MkdirAll(sspath, 0755))
-			defer func() {
-				require.NoError(t, fs.RemoveAll(sspath))
-			}()
 
 			opt := SnapshotOption{
 				Exported:   true,
@@ -3830,7 +3789,7 @@ func TestOnDiskStateMachineCanExportSnapshot(t *testing.T) {
 
 func testImportedSnapshotIsAlwaysRestored(t *testing.T,
 	newDir bool, ct config.CompressionType, fs vfs.IFS) {
-	tf := func() {
+	tf := func(testDir string) {
 		rc := config.Config{
 			ShardID:                 1,
 			ReplicaID:               1,
@@ -3844,8 +3803,8 @@ func testImportedSnapshotIsAlwaysRestored(t *testing.T,
 		peers := make(map[uint64]string)
 		peers[1] = nodeHostTestAddr1
 		nhc := config.NodeHostConfig{
-			NodeHostDir:    singleNodeHostTestDir,
-			RTTMillisecond: getRTTMillisecond(fs, singleNodeHostTestDir),
+			NodeHostDir:    testDir,
+			RTTMillisecond: getRTTMillisecond(fs, testDir),
 			RaftAddress:    nodeHostTestAddr1,
 			Expert:         getTestExpertConfig(fs),
 		}
@@ -3861,8 +3820,8 @@ func testImportedSnapshotIsAlwaysRestored(t *testing.T,
 
 		makeProposals := func(nn *NodeHost) {
 			session := nn.GetNoOPSession(1)
-			for i := 0; i < 16; i++ {
-				ctx, cancel := context.WithTimeout(context.Background(), pto)
+			for range 16 {
+				ctx, cancel := context.WithTimeout(t.Context(), pto)
 				_, err := nn.SyncPropose(ctx, session, []byte("test-data"))
 				cancel()
 				require.NoError(t, err, "failed to make proposal %v", err)
@@ -3870,12 +3829,8 @@ func testImportedSnapshotIsAlwaysRestored(t *testing.T,
 		}
 		makeProposals(nh)
 
-		sspath := "exported_snapshot_safe_to_delete"
-		require.NoError(t, fs.RemoveAll(sspath))
+		sspath := fs.PathJoin(t.TempDir(), "exported_snapshot")
 		require.NoError(t, fs.MkdirAll(sspath, 0755))
-		defer func() {
-			require.NoError(t, fs.RemoveAll(sspath))
-		}()
 
 		opt := SnapshotOption{
 			Exported:   true,
@@ -3883,7 +3838,7 @@ func testImportedSnapshotIsAlwaysRestored(t *testing.T,
 		}
 		var index uint64
 		exported := false
-		for i := 0; i < 1000; i++ {
+		for range 1000 {
 			sr, err := nh.RequestSnapshot(1, opt, pto)
 			require.NoError(t, err, "failed to request snapshot %v", err)
 			v := <-sr.ResultC()
@@ -3900,14 +3855,14 @@ func testImportedSnapshotIsAlwaysRestored(t *testing.T,
 		require.True(t, exported, "failed to export snapshot")
 		makeProposals(nh)
 
-		ctx, cancel := context.WithTimeout(context.Background(), pto)
+		ctx, cancel := context.WithTimeout(t.Context(), pto)
 		rv, err := nh.SyncRead(ctx, 1, nil)
 		cancel()
 		require.NoError(t, err, "failed to read applied value %v", err)
 		applied := rv.(uint64)
 		require.Greater(t, applied, index, "invalid applied value %d", applied)
 
-		ctx, cancel = context.WithTimeout(context.Background(), pto)
+		ctx, cancel = context.WithTimeout(t.Context(), pto)
 		err = nh.SyncRequestAddReplica(ctx, 1, 2, "noidea:8080", 0)
 		require.NoError(t, err, "failed to add node %v", err)
 		nh.Close()
@@ -3937,7 +3892,7 @@ func testImportedSnapshotIsAlwaysRestored(t *testing.T,
 			require.NoError(t, err, "failed to start shard %v", err)
 			waitForLeaderToBeElected(t, rnh, 1)
 
-			ctx, cancel = context.WithTimeout(context.Background(), pto)
+			ctx, cancel = context.WithTimeout(t.Context(), pto)
 			rv, err = rnh.SyncRead(ctx, 1, nil)
 			cancel()
 			require.NoError(t, err, "failed to read applied value %v", err)
@@ -3949,7 +3904,7 @@ func testImportedSnapshotIsAlwaysRestored(t *testing.T,
 		require.NoError(t, err, "failed to check whether upgrade is possible")
 		require.True(t, ok, "can not upgrade")
 	}
-	runNodeHostTestDC(t, tf, true, fs)
+	runNodeHostTestDC(t, tf, fs)
 }
 
 func TestImportedSnapshotIsAlwaysRestored(t *testing.T) {
@@ -3965,9 +3920,9 @@ func TestImportedSnapshotIsAlwaysRestored(t *testing.T) {
 
 func TestShardWithoutQuorumCanBeRestoreByImportingSnapshot(t *testing.T) {
 	fs := vfs.GetTestFS()
-	tf := func() {
-		nh1dir := fs.PathJoin(singleNodeHostTestDir, "nh1")
-		nh2dir := fs.PathJoin(singleNodeHostTestDir, "nh2")
+	tf := func(testDir string) {
+		nh1dir := fs.PathJoin(testDir, "nh1")
+		nh2dir := fs.PathJoin(testDir, "nh2")
 		rc := config.Config{
 			ShardID:            1,
 			ReplicaID:          1,
@@ -4011,9 +3966,6 @@ func TestShardWithoutQuorumCanBeRestoreByImportingSnapshot(t *testing.T) {
 		require.NoError(t, err, "failed to start shard %v", err)
 		waitForLeaderToBeElected(t, nh1, 1)
 
-		defer func() {
-			require.NoError(t, fs.RemoveAll(singleNodeHostTestDir))
-		}()
 		defer once.Do(func() {
 			nh1.Close()
 			nh2.Close()
@@ -4023,8 +3975,8 @@ func TestShardWithoutQuorumCanBeRestoreByImportingSnapshot(t *testing.T) {
 		mkproposal := func(nh *NodeHost) {
 			done := false
 			pto := pto(nh)
-			for i := 0; i < 100; i++ {
-				ctx, cancel := context.WithTimeout(context.Background(), pto)
+			for range 100 {
+				ctx, cancel := context.WithTimeout(t.Context(), pto)
 				_, err := nh.SyncPropose(ctx, session, []byte("test-data"))
 				cancel()
 				if err == nil {
@@ -4038,12 +3990,8 @@ func TestShardWithoutQuorumCanBeRestoreByImportingSnapshot(t *testing.T) {
 		}
 		mkproposal(nh1)
 
-		sspath := "exported_snapshot_safe_to_delete"
-		require.NoError(t, fs.RemoveAll(sspath))
+		sspath := fs.PathJoin(t.TempDir(), "exported_snapshot")
 		require.NoError(t, fs.MkdirAll(sspath, 0755))
-		defer func() {
-			require.NoError(t, fs.RemoveAll(sspath))
-		}()
 
 		opt := SnapshotOption{
 			Exported:   true,
@@ -4084,17 +4032,14 @@ func TestShardWithoutQuorumCanBeRestoreByImportingSnapshot(t *testing.T) {
 		mkproposal(rnh1)
 		mkproposal(rnh2)
 	}
-	runNodeHostTestDC(t, tf, true, fs)
+	runNodeHostTestDC(t, tf, fs)
 }
 
 type chunks struct {
+	dir       string
 	received  uint64
 	confirmed uint64
 }
-
-var (
-	testSnapshotDir = "test_snapshot_dir_safe_to_delete"
-)
 
 func (c *chunks) onReceive(pb.MessageBatch) {
 	c.received++
@@ -4105,7 +4050,7 @@ func (c *chunks) confirm(shardID uint64, replicaID uint64, index uint64) {
 }
 
 func (c *chunks) getSnapshotDirFunc(shardID uint64, replicaID uint64) string {
-	return testSnapshotDir
+	return c.dir
 }
 
 type testSink2 struct {
@@ -4171,8 +4116,7 @@ func getTestSSMeta() rsm.SSMeta {
 
 func testCorruptedChunkWriterOutputCanBeHandledByChunk(t *testing.T,
 	enabled bool, exp uint64, fs vfs.IFS) {
-	require.NoError(t, fs.RemoveAll(testSnapshotDir))
-	c := &chunks{}
+	c := &chunks{dir: t.TempDir()}
 	dir := c.getSnapshotDirFunc(0, 0)
 	require.NoError(t, fs.MkdirAll(dir, 0755))
 
@@ -4180,11 +4124,8 @@ func testCorruptedChunkWriterOutputCanBeHandledByChunk(t *testing.T,
 	sink := &dataCorruptionSink{receiver: cks, enabled: enabled}
 	meta := getTestSSMeta()
 	cw := rsm.NewChunkWriter(sink, meta)
-	defer func() {
-		require.NoError(t, fs.RemoveAll(testSnapshotDir))
-	}()
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		data := make([]byte, rsm.ChunkSize)
 		_, err := rand.Read(data)
 		require.NoError(t, err)
@@ -4207,13 +4148,9 @@ func TestCorruptedChunkWriterOutputCanBeHandledByChunk(t *testing.T) {
 
 func TestChunkWriterOutputCanBeHandledByChunk(t *testing.T) {
 	fs := vfs.GetTestFS()
-	require.NoError(t, fs.RemoveAll(testSnapshotDir))
-	c := &chunks{}
+	c := &chunks{dir: t.TempDir()}
 	dir := c.getSnapshotDirFunc(0, 0)
 	require.NoError(t, fs.MkdirAll(dir, 0755))
-	defer func() {
-		require.NoError(t, fs.RemoveAll(testSnapshotDir))
-	}()
 
 	cks := transport.NewChunk(c.onReceive, c.confirm, c.getSnapshotDirFunc, 0, fs)
 	sink := &testSink2{receiver: cks}
@@ -4222,9 +4159,9 @@ func TestChunkWriterOutputCanBeHandledByChunk(t *testing.T) {
 	_, err := cw.Write(rsm.GetEmptyLRUSession())
 	require.NoError(t, err, "write failed %v", err)
 
-	payload := make([]byte, 0)
+	payload := make([]byte, 0, len(rsm.GetEmptyLRUSession())+int(rsm.ChunkSize)*10)
 	payload = append(payload, rsm.GetEmptyLRUSession()...)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		data := make([]byte, rsm.ChunkSize)
 		_, err := rand.Read(data)
 		require.NoError(t, err)
@@ -4237,7 +4174,7 @@ func TestChunkWriterOutputCanBeHandledByChunk(t *testing.T) {
 	require.Equal(t, uint64(1), c.received, "failed to receive the snapshot")
 	require.Equal(t, uint64(1), c.confirmed, "failed to confirm")
 
-	fp := fs.PathJoin(testSnapshotDir,
+	fp := fs.PathJoin(dir,
 		"snapshot-00000000000003E8", "snapshot-00000000000003E8.gbsnap")
 	reader, _, err := rsm.NewSnapshotReader(fp, fs)
 	require.NoError(t, err, "failed to get a snapshot reader %v", err)
@@ -4252,7 +4189,7 @@ func TestChunkWriterOutputCanBeHandledByChunk(t *testing.T) {
 		if n > 0 {
 			got = append(got, buf[:n]...)
 		}
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		require.NoError(t, err)
@@ -4283,8 +4220,8 @@ func TestNodeHostChecksLogDBType(t *testing.T) {
 			c.Expert.LogDBFactory = &testLogDBFactory{ldb: ldb}
 			return c
 		},
-		at: func(*NodeHost) {
-			nhc := getTestNodeHostConfig(fs)
+		at: func(nh *NodeHost) {
+			nhc := getTestNodeHostConfig(fs, nh.NodeHostConfig().NodeHostDir)
 			_, err := NewNodeHost(*nhc)
 			require.Equal(t, server.ErrLogDBType, err,
 				"didn't report logdb type error %v", err)
@@ -4296,9 +4233,11 @@ func TestNodeHostChecksLogDBType(t *testing.T) {
 
 var spawnChild = flag.Bool("spawn-child", false, "spawned child")
 
-func spawn(execName string) ([]byte, error) {
-	return exec.Command(execName, "-spawn-child",
-		"-test.v", "-test.run=TestNodeHostFileLock$").CombinedOutput()
+func spawn(execName string, testDir string) ([]byte, error) {
+	cmd := exec.Command(execName, "-spawn-child",
+		"-test.v", "-test.run=TestNodeHostFileLock$")
+	cmd.Env = append(os.Environ(), "DRAGONBOAT_TEST_FILE_LOCK_DIR="+testDir)
+	return cmd.CombinedOutput()
 }
 
 func TestNodeHostFileLock(t *testing.T) {
@@ -4306,11 +4245,14 @@ func TestNodeHostFileLock(t *testing.T) {
 	if fs != vfs.DefaultFS {
 		t.Skip("not using the default fs, skipped")
 	}
-	tf := func() {
+	tf := func(testDir string) {
 		child := *spawnChild
+		if child {
+			testDir = os.Getenv("DRAGONBOAT_TEST_FILE_LOCK_DIR")
+		}
 		nhc := config.NodeHostConfig{
-			NodeHostDir:    singleNodeHostTestDir,
-			RTTMillisecond: getRTTMillisecond(fs, singleNodeHostTestDir),
+			NodeHostDir:    testDir,
+			RTTMillisecond: getRTTMillisecond(fs, testDir),
 			RaftAddress:    nodeHostTestAddr1,
 			Expert:         getTestExpertConfig(fs),
 		}
@@ -4318,7 +4260,7 @@ func TestNodeHostFileLock(t *testing.T) {
 			nh, err := NewNodeHost(nhc)
 			require.NoError(t, err, "failed to create nodehost %v", err)
 			defer nh.Close()
-			out, err := spawn(os.Args[0])
+			out, err := spawn(os.Args[0], testDir)
 			require.Error(t, err, "file lock didn't prevent start, %s", out)
 			require.Contains(t, string(out), "failed to lock data directory",
 				"unexpected output: %s", out)
@@ -4331,15 +4273,15 @@ func TestNodeHostFileLock(t *testing.T) {
 			}
 		}
 	}
-	runNodeHostTestDC(t, tf, !*spawnChild, fs)
+	runNodeHostTestDC(t, tf, fs)
 }
 
 func TestChangeNodeHostID(t *testing.T) {
 	fs := vfs.GetTestFS()
-	tf := func() {
+	tf := func(testDir string) {
 		nhc := config.NodeHostConfig{
-			NodeHostDir:    singleNodeHostTestDir,
-			RTTMillisecond: getRTTMillisecond(fs, singleNodeHostTestDir),
+			NodeHostDir:    testDir,
+			RTTMillisecond: getRTTMillisecond(fs, testDir),
 			RaftAddress:    nodeHostTestAddr1,
 			Expert:         getTestExpertConfig(fs),
 		}
@@ -4353,7 +4295,7 @@ func TestChangeNodeHostID(t *testing.T) {
 		require.ErrorIs(t, err, server.ErrNodeHostIDChanged,
 			"failed to reject changed NodeHostID %v", err)
 	}
-	runNodeHostTestDC(t, tf, !*spawnChild, fs)
+	runNodeHostTestDC(t, tf, fs)
 }
 
 type testLogDBFactory2 struct {
@@ -4382,8 +4324,8 @@ func TestNodeHostReturnsErrLogDBBrokenChangeWhenLogDBTypeChanges(t *testing.T) {
 		return logdb.NewDefaultLogDB(config, cb, dirs, lldirs)
 	}
 	to := &testOption{
-		at: func(*NodeHost) {
-			nhc := getTestNodeHostConfig(fs)
+		at: func(nh *NodeHost) {
+			nhc := getTestNodeHostConfig(fs, nh.NodeHostConfig().NodeHostDir)
 			nhc.Expert.LogDBFactory = &testLogDBFactory2{f: nff}
 			_, err := NewNodeHost(*nhc)
 			require.Equal(t, server.ErrLogDBBrokenChange, err,
@@ -4414,8 +4356,8 @@ func TestNodeHostByDefaultUsePlainEntryLogDB(t *testing.T) {
 			return c
 		},
 		noElection: true,
-		at: func(*NodeHost) {
-			nhc := getTestNodeHostConfig(fs)
+		at: func(nh *NodeHost) {
+			nhc := getTestNodeHostConfig(fs, nh.NodeHostConfig().NodeHostDir)
 			nhc.Expert.LogDBFactory = &testLogDBFactory2{f: bff}
 			_, err := NewNodeHost(*nhc)
 			require.Equal(t, server.ErrIncompatibleData, err,
@@ -4446,18 +4388,18 @@ func TestNodeHostByDefaultChecksWhetherToUseBatchedLogDB(t *testing.T) {
 		tf: func(nh *NodeHost) {
 			pto := pto(nh)
 			cs := nh.GetNoOPSession(1)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			_, err := nh.SyncPropose(ctx, cs, []byte("test-data"))
 			cancel()
 			require.NoError(t, err, "failed to make proposal %v", err)
 		},
-		at: func(*NodeHost) {
-			nhc := getTestNodeHostConfig(fs)
+		at: func(nh *NodeHost) {
+			nhc := getTestNodeHostConfig(fs, nh.NodeHostConfig().NodeHostDir)
 			nhc.Expert.LogDBFactory = &testLogDBFactory2{f: nff}
-			nh, err := NewNodeHost(*nhc)
+			nh2, err := NewNodeHost(*nhc)
 			require.NoError(t, err, "failed to create node host")
-			if nh != nil {
-				nh.Close()
+			if nh2 != nil {
+				nh2.Close()
 			}
 		},
 	}
@@ -4468,8 +4410,8 @@ func TestNodeHostWithUnexpectedDeploymentIDWillBeDetected(t *testing.T) {
 	fs := vfs.GetTestFS()
 	to := &testOption{
 		noElection: true,
-		at: func(*NodeHost) {
-			nhc := getTestNodeHostConfig(fs)
+		at: func(nh *NodeHost) {
+			nhc := getTestNodeHostConfig(fs, nh.NodeHostConfig().NodeHostDir)
 			nhc.DeploymentID = 200
 			_, err := NewNodeHost(*nhc)
 			require.Equal(t, server.ErrDeploymentIDChanged, err,
@@ -4512,7 +4454,7 @@ func TestLeaderInfoIsReported(t *testing.T) {
 		defaultTestNode: true,
 		tf: func(nh *NodeHost) {
 			leaderAvailable := false
-			for i := 0; i < 500; i++ {
+			for range 500 {
 				nhi := nh.GetNodeHostInfo(DefaultNodeHostInfoOption)
 				require.Len(t, nhi.ShardInfoList, 1, "unexpected len")
 				require.Equal(t, uint64(1), nhi.ShardInfoList[0].ShardID,
@@ -4527,13 +4469,13 @@ func TestLeaderInfoIsReported(t *testing.T) {
 			require.True(t, leaderAvailable, "failed to get leader info")
 
 			pto := pto(nh)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			defer cancel()
 			err := nh.SyncRequestAddReplica(ctx, 1, 2, "noidea:8080", 0)
 			require.NoError(t, err, "failed to add node %v", err)
 
 			leaderChanged := false
-			for i := 0; i < 500; i++ {
+			for range 500 {
 				nhi := nh.GetNodeHostInfo(DefaultNodeHostInfoOption)
 				require.Len(t, nhi.ShardInfoList, 1, "unexpected len")
 				if nhi.ShardInfoList[0].LeaderID == 1 {
@@ -4555,13 +4497,13 @@ func TestDroppedRequestsAreReported(t *testing.T) {
 		defaultTestNode: true,
 		tf: func(nh *NodeHost) {
 			pto := lpto(nh)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			defer cancel()
 			err := nh.SyncRequestAddReplica(ctx, 1, 2, "noidea:8080", 0)
 			require.NoError(t, err, "failed to add node %v", err)
 
 			leaderSteppedDown := false
-			for i := 0; i < 1000; i++ {
+			for range 1000 {
 				_, _, ok, err := nh.GetLeaderID(1)
 				require.NoError(t, err, "failed to get leader id %v", err)
 				if !ok {
@@ -4574,28 +4516,28 @@ func TestDroppedRequestsAreReported(t *testing.T) {
 
 			unlimited := 30 * time.Minute
 			func() {
-				nctx, ncancel := context.WithTimeout(context.Background(), unlimited)
+				nctx, ncancel := context.WithTimeout(t.Context(), unlimited)
 				defer ncancel()
 				cs := nh.GetNoOPSession(1)
-				for i := 0; i < 10; i++ {
+				for range 10 {
 					_, err := nh.SyncPropose(nctx, cs, make([]byte, 1))
 					assert.Equal(t, ErrShardNotReady, err, "unexpected error")
 				}
 			}()
 
 			func() {
-				nctx, ncancel := context.WithTimeout(context.Background(), unlimited)
+				nctx, ncancel := context.WithTimeout(t.Context(), unlimited)
 				defer ncancel()
-				for i := 0; i < 10; i++ {
+				for range 10 {
 					err := nh.SyncRequestAddReplica(nctx, 1, 3, "noidea:8080", 0)
 					assert.Equal(t, ErrShardNotReady, err, "unexpected error")
 				}
 			}()
 
 			func() {
-				nctx, ncancel := context.WithTimeout(context.Background(), unlimited)
+				nctx, ncancel := context.WithTimeout(t.Context(), unlimited)
 				defer ncancel()
-				for i := 0; i < 10; i++ {
+				for range 10 {
 					_, err := nh.SyncRead(nctx, 1, nil)
 					assert.Equal(t, ErrShardNotReady, err, "unexpected error")
 				}
@@ -4619,7 +4561,7 @@ func (rel *testRaftEventListener) LeaderUpdated(info raftio.LeaderInfo) {
 func (rel *testRaftEventListener) get() []raftio.LeaderInfo {
 	rel.mu.Lock()
 	defer rel.mu.Unlock()
-	r := make([]raftio.LeaderInfo, 0)
+	r := make([]raftio.LeaderInfo, 0, len(rel.received))
 	return append(r, rel.received...)
 }
 
@@ -4636,14 +4578,14 @@ func TestRaftEventsAreReported(t *testing.T) {
 		},
 		tf: func(nh *NodeHost) {
 			pto := pto(nh)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			err := nh.SyncRequestAddReplica(ctx, 1, 2, "127.0.0.1:8080", 0)
 			require.NoError(t, err, "add node failed %v", err)
 			cancel()
 
 			var received []raftio.LeaderInfo
 			notified := false
-			for i := 0; i < 1000; i++ {
+			for range 1000 {
 				received = rel.get()
 				if len(received) >= 4 {
 					notified = true
@@ -4671,17 +4613,20 @@ func TestRaftEventsAreReported(t *testing.T) {
 	runNodeHostTest(t, to, fs)
 }
 
-func TestV2DataCanBeHandled(t *testing.T) {
+func TestV2DataIsRejectedWithClearError(t *testing.T) {
+	// pebble v2 removed support for the format major version 1 used by the
+	// pebble version embedded in dragonboat v2.x, data created by such old
+	// versions can thus no longer be opened. to migrate, first open the data
+	// with a pebble v1.x based dragonboat so its format major version can be
+	// upgraded. this test verifies that opening such legacy data fails
+	// cleanly with an explicit error rather than a panic or silent data
+	// corruption.
 	fs := vfs.GetTestFS()
 	if vfs.GetTestFS() != vfs.DefaultFS {
 		t.Skip("skipped as not using the default fs")
 	}
 	v2datafp := "internal/logdb/testdata/v2-rocksdb-batched.tar.bz2"
-	targetDir := "test-v2-data-safe-to-remove"
-	require.NoError(t, fs.RemoveAll(targetDir))
-	defer func() {
-		require.NoError(t, fs.RemoveAll(targetDir))
-	}()
+	targetDir := t.TempDir()
 
 	topDirName := "single_nodehost_test_dir_safe_to_delete"
 	testHostname := "lindfield.local"
@@ -4697,26 +4642,15 @@ func TestV2DataCanBeHandled(t *testing.T) {
 	}
 
 	v2dataDir := fs.PathJoin(targetDir, topDirName)
-	to := &testOption{
-		noElection: true,
-		updateNodeHostConfig: func(c *config.NodeHostConfig) *config.NodeHostConfig {
-			c.WALDir = v2dataDir
-			c.NodeHostDir = v2dataDir
-			return c
-		},
-		tf: func(nh *NodeHost) {
-			name := nh.mu.logdb.Name()
-			if name != "sharded-pebble" {
-				t.Skip("skipped as not using rocksdb compatible logdb")
-			}
-			logdb := nh.mu.logdb
-			rs, err := logdb.ReadRaftState(2, 1, 0)
-			require.NoError(t, err, "failed to get raft state %v", err)
-			assert.Equal(t, uint64(3), rs.EntryCount, "unexpected entry count")
-			assert.Equal(t, uint64(3), rs.State.Commit, "unexpected commit")
-		},
+	nhc := getTestNodeHostConfig(fs, targetDir)
+	nhc.WALDir = v2dataDir
+	nhc.NodeHostDir = v2dataDir
+	nh, err := NewNodeHost(*nhc)
+	if err == nil {
+		nh.Close()
 	}
-	runNodeHostTest(t, to, fs)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "format major version")
 }
 
 func TestSnapshotCanBeCompressed(t *testing.T) {
@@ -4728,7 +4662,7 @@ func TestSnapshotCanBeCompressed(t *testing.T) {
 		},
 		tf: func(nh *NodeHost) {
 			pto := lpto(nh)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			_, err := nh.SyncRequestSnapshot(ctx, 1, DefaultSnapshotOption)
 			cancel()
 			require.NoError(t, err, "failed to request snapshot %v", err)
@@ -4750,7 +4684,7 @@ func TestSnapshotCanBeCompressed(t *testing.T) {
 func makeProposals(nh *NodeHost) {
 	session := nh.GetNoOPSession(1)
 	pto := pto(nh)
-	for i := 0; i < 16; i++ {
+	for range 16 {
 		ctx, cancel := context.WithTimeout(context.Background(), pto)
 		_, err := nh.SyncPropose(ctx, session, []byte("test-data"))
 		cancel()
@@ -4762,7 +4696,7 @@ func makeProposals(nh *NodeHost) {
 
 func testWitnessIO(t *testing.T,
 	witnessTestFunc func(*NodeHost, *NodeHost, *tests.SimDiskSM), fs vfs.IFS) {
-	tf := func() {
+	tf := func(testDir string) {
 		rc := config.Config{
 			ShardID:      1,
 			ReplicaID:    1,
@@ -4772,7 +4706,7 @@ func testWitnessIO(t *testing.T,
 		}
 		peers := make(map[uint64]string)
 		peers[1] = nodeHostTestAddr1
-		dir := fs.PathJoin(singleNodeHostTestDir, "nh1")
+		dir := fs.PathJoin(testDir, "nh1")
 		nhc1 := config.NodeHostConfig{
 			NodeHostDir:    dir,
 			RTTMillisecond: getRTTMillisecond(fs, dir),
@@ -4789,10 +4723,10 @@ func testWitnessIO(t *testing.T,
 		require.NoError(t, nh1.StartOnDiskReplica(peers, false, newSM, rc))
 		waitForLeaderToBeElected(t, nh1, 1)
 
-		for i := 0; i < 8; i++ {
+		for range 8 {
 			makeProposals(nh1)
 			pto := lpto(nh1)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			opt := SnapshotOption{
 				OverrideCompactionOverhead: true,
 				CompactionOverhead:         1,
@@ -4803,7 +4737,7 @@ func testWitnessIO(t *testing.T,
 		}
 
 		pto := pto(nh1)
-		ctx, cancel := context.WithTimeout(context.Background(), pto)
+		ctx, cancel := context.WithTimeout(t.Context(), pto)
 		err = nh1.SyncRequestAddWitness(ctx, 1, 2, nodeHostTestAddr2, 0)
 		cancel()
 		require.NoError(t, err, "failed to add witness %v", err)
@@ -4813,7 +4747,7 @@ func testWitnessIO(t *testing.T,
 		rc2.IsWitness = true
 		nhc2 := nhc1
 		nhc2.RaftAddress = nodeHostTestAddr2
-		nhc2.NodeHostDir = fs.PathJoin(singleNodeHostTestDir, "nh2")
+		nhc2.NodeHostDir = fs.PathJoin(testDir, "nh2")
 		nh2, err := NewNodeHost(nhc2)
 		require.NoError(t, err, "failed to create node host %v", err)
 		defer nh2.Close()
@@ -4827,7 +4761,7 @@ func testWitnessIO(t *testing.T,
 		waitForLeaderToBeElected(t, nh2, 1)
 		witnessTestFunc(nh1, nh2, witness)
 	}
-	runNodeHostTestDC(t, tf, true, fs)
+	runNodeHostTestDC(t, tf, fs)
 }
 
 func TestWitnessSnapshotIsCorrectlyHandled(t *testing.T) {
@@ -4853,7 +4787,7 @@ func TestWitnessSnapshotIsCorrectlyHandled(t *testing.T) {
 func TestWitnessCanReplicateEntries(t *testing.T) {
 	fs := vfs.GetTestFS()
 	tf := func(nh1 *NodeHost, nh2 *NodeHost, witness *tests.SimDiskSM) {
-		for i := 0; i < 8; i++ {
+		for range 8 {
 			makeProposals(nh1)
 		}
 		require.Zero(t, witness.GetApplied(),
@@ -4919,7 +4853,7 @@ func TestStateMachineIsClosedAfterOffloaded(t *testing.T) {
 
 func TestTimeoutCanBeReturned(t *testing.T) {
 	fs := vfs.GetTestFS()
-	rtt := getRTTMillisecond(fs, singleNodeHostTestDir)
+	rtt := getRTTMillisecond(fs, t.TempDir())
 	to := &testOption{
 		createSM: func(uint64, uint64) sm.IStateMachine {
 			return &TimeoutStateMachine{
@@ -4929,13 +4863,13 @@ func TestTimeoutCanBeReturned(t *testing.T) {
 		},
 		tf: func(nh *NodeHost) {
 			timeout := time.Duration(rtt*5) * time.Millisecond
-			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			ctx, cancel := context.WithTimeout(t.Context(), timeout)
 			session := nh.GetNoOPSession(1)
 			_, err := nh.SyncPropose(ctx, session, []byte("test"))
 			cancel()
 			assert.Equal(t, ErrTimeout, err, "unexpected propose error")
 
-			ctx, cancel = context.WithTimeout(context.Background(), timeout)
+			ctx, cancel = context.WithTimeout(t.Context(), timeout)
 			_, err = nh.SyncRequestSnapshot(ctx, 1, SnapshotOption{})
 			cancel()
 			assert.Equal(t, ErrTimeout, err, "unexpected snapshot error")
@@ -4956,7 +4890,7 @@ func testIOErrorIsHandled(t *testing.T, op vfs.Op) {
 			}
 			inj.SetIndex(0)
 			pto := pto(nh)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
+			ctx, cancel := context.WithTimeout(t.Context(), pto)
 			session := nh.GetNoOPSession(1)
 			_, err := nh.SyncPropose(ctx, session, []byte("test"))
 			cancel()
@@ -4964,7 +4898,7 @@ func testIOErrorIsHandled(t *testing.T, op vfs.Op) {
 				"proposal unexpectedly completed, %v", err)
 			select {
 			case e := <-nh.engine.ec:
-				require.Equal(t, vfs.ErrInjected, e,
+				require.True(t, strings.Contains(e.Error(), vfs.ErrInjected.Error()),
 					"failed to return the expected error, %v", e)
 			default:
 				require.Fail(t, "failed to trigger error")
@@ -5021,7 +4955,7 @@ func TestNodeCanBeUnloadedOnceClosed(t *testing.T) {
 		tf: func(nh *NodeHost) {
 			countNodes := func(nh *NodeHost) uint64 {
 				count := uint64(0)
-				nh.mu.shards.Range(func(key, value interface{}) bool {
+				nh.mu.shards.Range(func(key, value any) bool {
 					count++
 					return true
 				})
@@ -5032,7 +4966,7 @@ func TestNodeCanBeUnloadedOnceClosed(t *testing.T) {
 			node.requestRemoval()
 
 			unloaded := false
-			for retry := 0; retry < 1000; retry++ {
+			for range 1000 {
 				if countNodes(nh) == 0 {
 					unloaded = true
 					break
@@ -5058,7 +4992,7 @@ func TestUsingClosedNodeHostIsNotAllowed(t *testing.T) {
 				nh.StartOnDiskReplica(nil, false, nil, config.Config{}))
 			assert.Equal(t, ErrClosed, nh.StopShard(1))
 			assert.Equal(t, ErrClosed, nh.StopReplica(1, 1))
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 			defer cancel()
 			_, err := nh.SyncPropose(ctx, nil, nil)
 			assert.Equal(t, ErrClosed, err)
@@ -5113,7 +5047,7 @@ func TestContextDeadlineIsChecked(t *testing.T) {
 	to := &testOption{
 		defaultTestNode: true,
 		tf: func(nh *NodeHost) {
-			ctx := context.Background()
+			ctx := t.Context()
 			_, err := nh.SyncPropose(ctx, nil, nil)
 			assert.Equal(t, ErrDeadlineNotSet, err)
 			_, err = nh.SyncRead(ctx, 1, nil)
@@ -5145,10 +5079,10 @@ func TestContextDeadlineIsChecked(t *testing.T) {
 
 func TestGetTimeoutFromContext(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	_, err := getTimeoutFromContext(context.Background())
+	_, err := getTimeoutFromContext(t.Context())
 	require.Equal(t, ErrDeadlineNotSet, err,
 		"failed to return ErrDeadlineNotSet, %v", err)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	defer cancel()
 	d, err := getTimeoutFromContext(ctx)
 	require.NoError(t, err, "failed to get timeout, %v", err)
@@ -5304,7 +5238,7 @@ func (s *stressRSM) Update(sm.Entry) (sm.Result, error) {
 	return sm.Result{}, nil
 }
 
-func (s *stressRSM) Lookup(interface{}) (interface{}, error) {
+func (s *stressRSM) Lookup(any) (any, error) {
 	return nil, nil
 }
 
@@ -5337,13 +5271,9 @@ func TestSlowTestStressedSnapshotWorker(t *testing.T) {
 		t.Skip("skipped TestSlowTestStressedSnapshotWorker, SLOW_TEST not set")
 	}
 	fs := vfs.GetTestFS()
-	require.NoError(t, fs.RemoveAll(singleNodeHostTestDir))
-	defer func() {
-		require.NoError(t, fs.RemoveAll(singleNodeHostTestDir))
-	}()
-
-	nh1dir := fs.PathJoin(singleNodeHostTestDir, "nh1")
-	nh2dir := fs.PathJoin(singleNodeHostTestDir, "nh2")
+	testDir := t.TempDir()
+	nh1dir := fs.PathJoin(testDir, "nh1")
+	nh2dir := fs.PathJoin(testDir, "nh2")
 	rc := config.Config{
 		ShardID:            1,
 		ReplicaID:          1,
@@ -5376,7 +5306,7 @@ func TestSlowTestStressedSnapshotWorker(t *testing.T) {
 		cs := nh1.GetNoOPSession(i)
 		total := 20
 		for {
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 			_, err := nh1.SyncPropose(ctx, cs, make([]byte, 1))
 			cancel()
 			if err == ErrTimeout || err == ErrShardNotReady {
@@ -5392,7 +5322,7 @@ func TestSlowTestStressedSnapshotWorker(t *testing.T) {
 
 	for i := uint64(1); i <= uint64(96); i++ {
 		for {
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 			err := nh1.SyncRequestAddReplica(ctx, i, 2, nodeHostTestAddr2, 0)
 			cancel()
 			if err != nil {
@@ -5431,7 +5361,7 @@ func TestSlowTestStressedSnapshotWorker(t *testing.T) {
 		cs := nh2.GetNoOPSession(i)
 		total := 1000
 		for {
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 			_, err := nh2.SyncPropose(ctx, cs, make([]byte, 1))
 			cancel()
 			if err != nil {

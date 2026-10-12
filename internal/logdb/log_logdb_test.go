@@ -27,14 +27,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func removeTestLogdbDir(fs vfs.IFS) {
-	if err := fs.RemoveAll(RDBTestDirectory); err != nil {
-		panic(err)
-	}
-}
-
-func getTestLogReaderWithoutCache(entries []pb.Entry) *LogReader {
-	logdb := getNewLogReaderTestDB(entries, vfs.GetTestFS())
+func getTestLogReaderWithoutCache(t *testing.T, entries []pb.Entry) *LogReader {
+	logdb := getNewLogReaderTestDB(t, entries, vfs.GetTestFS())
 	ls := NewLogReader(LogReaderTestShardID, LogReaderTestReplicaID, logdb)
 	ls.SetCompactor(testCompactor)
 	if len(entries) > 0 {
@@ -75,8 +69,7 @@ func TestRLLTFindConflict(t *testing.T) {
 		{[]pb.Entry{{Index: 3, Term: 1}, {Index: 4, Term: 2},
 			{Index: 5, Term: 4}, {Index: 6, Term: 4}}, 3},
 	}
-	stable := getTestLogReaderWithoutCache(previousEnts)
-	defer removeTestLogdbDir(vfs.GetTestFS())
+	stable := getTestLogReaderWithoutCache(t, previousEnts)
 	defer func() {
 		require.NoError(t, stable.logdb.(*ShardedDB).Close())
 	}()
@@ -92,8 +85,7 @@ func TestRLLTFindConflict(t *testing.T) {
 func TestRLLTIsUpToDate(t *testing.T) {
 	previousEnts := []pb.Entry{{Index: 1, Term: 1}, {Index: 2, Term: 2},
 		{Index: 3, Term: 3}}
-	stable := getTestLogReaderWithoutCache(previousEnts)
-	defer removeTestLogdbDir(vfs.GetTestFS())
+	stable := getTestLogReaderWithoutCache(t, previousEnts)
 	defer func() {
 		require.NoError(t, stable.logdb.(*ShardedDB).Close())
 	}()
@@ -162,7 +154,7 @@ func TestRLLTAppend(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
-		stable := getTestLogReaderWithoutCache(previousEnts)
+		stable := getTestLogReaderWithoutCache(t, previousEnts)
 		raftLog := raft.NewLog(stable)
 
 		fi, _ := stable.GetRange()
@@ -179,7 +171,6 @@ func TestRLLTAppend(t *testing.T) {
 			t.Errorf("#%d: unstable = %d, want %d", i, goff, tt.wunstable)
 		}
 		require.NoError(t, stable.logdb.(*ShardedDB).Close())
-		removeTestLogdbDir(vfs.GetTestFS())
 	}
 }
 
@@ -290,7 +281,7 @@ func TestRLLTLogMaybeAppend(t *testing.T) {
 	}
 
 	for i, tt := range tests {
-		stable := getTestLogReaderWithoutCache(previousEnts)
+		stable := getTestLogReaderWithoutCache(t, previousEnts)
 		raftLog := raft.NewLog(stable)
 		raftLog.SetCommitted(commit)
 
@@ -341,7 +332,6 @@ func TestRLLTLogMaybeAppend(t *testing.T) {
 		}
 
 		require.NoError(t, stable.logdb.(*ShardedDB).Close())
-		removeTestLogdbDir(vfs.GetTestFS())
 	}
 }
 
@@ -361,7 +351,7 @@ func TestRLLTCompactionSideEffects(t *testing.T) {
 		entries = append(entries, pb.Entry{Term: uint64(i), Index: uint64(i)})
 	}
 
-	stable := getTestLogReaderWithoutCache(entries)
+	stable := getTestLogReaderWithoutCache(t, entries)
 	raftLog := raft.NewLog(stable)
 	for i = unstableIndex; i < lastIndex; i++ {
 		raftLog.Append([]pb.Entry{pb.Entry{Term: uint64(i + 1), Index: uint64(i + 1)}})
@@ -415,7 +405,6 @@ func TestRLLTCompactionSideEffects(t *testing.T) {
 	}
 
 	stable.logdb.(*ShardedDB).Close()
-	removeTestLogdbDir()
 }
 */
 
@@ -438,7 +427,7 @@ func TestRLLTHasNextEnts(t *testing.T) {
 		{5, false},
 	}
 	for i, tt := range tests {
-		stable := getTestLogReaderWithoutCache(nil)
+		stable := getTestLogReaderWithoutCache(t, nil)
 		require.NoError(t, stable.ApplySnapshot(snap))
 		raftLog := raft.NewLog(stable)
 		require.NoError(t, raftLog.Append(ents))
@@ -451,7 +440,6 @@ func TestRLLTHasNextEnts(t *testing.T) {
 			"#%d: hasNext = %v, want %v", i, hasNext, tt.hasNext)
 
 		require.NoError(t, stable.logdb.(*ShardedDB).Close())
-		removeTestLogdbDir(vfs.GetTestFS())
 	}
 }
 
@@ -474,7 +462,7 @@ func TestRLLTNextEnts(t *testing.T) {
 		{5, nil},
 	}
 	for i, tt := range tests {
-		stable := getTestLogReaderWithoutCache(nil)
+		stable := getTestLogReaderWithoutCache(t, nil)
 		require.NoError(t, stable.ApplySnapshot(snap))
 		raftLog := raft.NewLog(stable)
 		require.NoError(t, raftLog.Append(ents))
@@ -488,7 +476,6 @@ func TestRLLTNextEnts(t *testing.T) {
 			"#%d: nents = %+v, want %+v", i, nents, tt.wents)
 
 		require.NoError(t, stable.logdb.(*ShardedDB).Close())
-		removeTestLogdbDir(vfs.GetTestFS())
 	}
 }
 
@@ -512,7 +499,7 @@ func TestRLLTCompaction(t *testing.T) {
 		for i := uint64(1); i <= tt.lastIndex; i++ {
 			entries = append(entries, pb.Entry{Index: i})
 		}
-		stable := getTestLogReaderWithoutCache(entries)
+		stable := getTestLogReaderWithoutCache(t, entries)
 		raftLog := raft.NewLog(stable)
 
 		func() {
@@ -543,14 +530,13 @@ func TestRLLTCompaction(t *testing.T) {
 			}
 		}()
 		require.NoError(t, stable.logdb.(*ShardedDB).Close())
-		removeTestLogdbDir(vfs.GetTestFS())
 	}
 }
 
 func TestRLLTLogRestore(t *testing.T) {
 	index := uint64(1000)
 	term := uint64(1000)
-	stable := getTestLogReaderWithoutCache(nil)
+	stable := getTestLogReaderWithoutCache(t, nil)
 	require.NoError(t, stable.ApplySnapshot(pb.Snapshot{Index: index, Term: term}))
 	raftLog := raft.NewLog(stable)
 
@@ -566,14 +552,13 @@ func TestRLLTLogRestore(t *testing.T) {
 		"term = %d, want %d", mustTerm(raftLog.Term(index)), term)
 
 	require.NoError(t, stable.logdb.(*ShardedDB).Close())
-	removeTestLogdbDir(vfs.GetTestFS())
 }
 
 func TestRLLTIsOutOfBounds(t *testing.T) {
 	offset := uint64(100)
 	num := uint64(100)
 
-	stable := getTestLogReaderWithoutCache(nil)
+	stable := getTestLogReaderWithoutCache(t, nil)
 	require.NoError(t, stable.ApplySnapshot(pb.Snapshot{Index: offset}))
 	l := raft.NewLog(stable)
 
@@ -649,7 +634,6 @@ func TestRLLTIsOutOfBounds(t *testing.T) {
 	}
 
 	require.NoError(t, stable.logdb.(*ShardedDB).Close())
-	removeTestLogdbDir(vfs.GetTestFS())
 }
 
 func TestRLLTTerm(t *testing.T) {
@@ -657,7 +641,7 @@ func TestRLLTTerm(t *testing.T) {
 	offset := uint64(100)
 	num := uint64(100)
 
-	stable := getTestLogReaderWithoutCache(nil)
+	stable := getTestLogReaderWithoutCache(t, nil)
 	require.NoError(t, stable.ApplySnapshot(pb.Snapshot{Index: offset, Term: 1}))
 	l := raft.NewLog(stable)
 	for i = 1; i < num; i++ {
@@ -681,7 +665,6 @@ func TestRLLTTerm(t *testing.T) {
 	}
 
 	require.NoError(t, stable.logdb.(*ShardedDB).Close())
-	removeTestLogdbDir(vfs.GetTestFS())
 }
 
 // not related to logstable
@@ -698,7 +681,7 @@ func TestRLLTSlice(t *testing.T) {
 	halfe := pb.Entry{Index: half, Term: half}
 	noLimit := uint64(math.MaxUint64)
 
-	stable := getTestLogReaderWithoutCache(nil)
+	stable := getTestLogReaderWithoutCache(t, nil)
 	require.NoError(t, stable.ApplySnapshot(pb.Snapshot{Index: offset}))
 	for i = 1; i < num/2; i++ {
 		require.NoError(t, stable.Append([]pb.Entry{{Index: offset + i, Term: offset + i}}))
@@ -773,7 +756,6 @@ func TestRLLTSlice(t *testing.T) {
 	}
 
 	require.NoError(t, stable.logdb.(*ShardedDB).Close())
-	removeTestLogdbDir(vfs.GetTestFS())
 }
 
 func mustTerm(term uint64, err error) uint64 {

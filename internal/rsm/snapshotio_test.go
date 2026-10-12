@@ -27,24 +27,28 @@ import (
 )
 
 const (
-	testSessionSize      uint64 = 16
-	testPayloadSize      uint64 = 8
-	testSnapshotFilename        = "testsnapshot_safe_to_delete.tmp"
+	testSessionSize uint64 = 16
+	testPayloadSize uint64 = 8
 )
 
 func reportLeakedFD(fs vfs.IFS, t *testing.T) {
 	vfs.ReportLeakedFD(fs, t)
 }
 
+// snapshotTestDir returns a per-test directory, creating it in fs first as
+// t.TempDir only creates the directory in the OS fs while tests may run on
+// an in-memory fs.
+func snapshotTestDir(t *testing.T, fs vfs.IFS) string {
+	dir := t.TempDir()
+	require.NoError(t, fs.MkdirAll(dir, 0755))
+	return dir
+}
+
 func TestSnapshotWriterCanBeCreated(t *testing.T) {
 	fs := vfs.GetTestFS()
-	w, err := NewSnapshotWriter(testSnapshotFilename, pb.NoCompression, fs)
+	fp := fs.PathJoin(snapshotTestDir(t, fs), "testsnapshot.tmp")
+	w, err := NewSnapshotWriter(fp, pb.NoCompression, fs)
 	require.NoError(t, err)
-	defer func() {
-		if err := fs.RemoveAll(testSnapshotFilename); err != nil {
-			t.Fatalf("%v", err)
-		}
-	}()
 	defer func() {
 		require.NoError(t, w.Close())
 	}()
@@ -52,13 +56,9 @@ func TestSnapshotWriterCanBeCreated(t *testing.T) {
 
 func TestSaveHeaderSavesTheHeader(t *testing.T) {
 	fs := vfs.GetTestFS()
-	defer func() {
-		if err := fs.RemoveAll(testSnapshotFilename); err != nil {
-			t.Fatalf("%v", err)
-		}
-	}()
+	fp := fs.PathJoin(snapshotTestDir(t, fs), "testsnapshot.tmp")
 	func() {
-		w, err := NewSnapshotWriter(testSnapshotFilename, pb.NoCompression, fs)
+		w, err := NewSnapshotWriter(fp, pb.NoCompression, fs)
 		require.NoError(t, err)
 		sessionData := make([]byte, testSessionSize)
 		storeData := make([]byte, testPayloadSize)
@@ -74,7 +74,7 @@ func TestSaveHeaderSavesTheHeader(t *testing.T) {
 		require.Equal(t, len(storeData), m)
 		err = w.Close()
 		require.NoError(t, err)
-		r, header, err := NewSnapshotReader(testSnapshotFilename, fs)
+		r, header, err := NewSnapshotReader(fp, fs)
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, r.Close())
@@ -88,11 +88,8 @@ func TestSaveHeaderSavesTheHeader(t *testing.T) {
 }
 
 func makeTestSnapshotFile(t *testing.T, ssz uint64,
-	psz uint64, v SSVersion, fs vfs.IFS) (*SnapshotWriter, []byte, []byte) {
-	if err := fs.RemoveAll(testSnapshotFilename); err != nil {
-		t.Fatalf("%v", err)
-	}
-	w, err := newVersionedSnapshotWriter(testSnapshotFilename, v,
+	psz uint64, v SSVersion, fn string, fs vfs.IFS) (*SnapshotWriter, []byte, []byte) {
+	w, err := newVersionedSnapshotWriter(fn, v,
 		pb.NoCompression, fs)
 	require.NoError(t, err)
 	sessionData := make([]byte, ssz)
@@ -113,10 +110,13 @@ func makeTestSnapshotFile(t *testing.T, ssz uint64,
 	return w, sessionData, storeData
 }
 
-func corruptSnapshotPayload(t *testing.T, fs vfs.IFS) {
-	tmpFp := "testsnapshot.writing"
+func corruptSnapshotPayload(t *testing.T, fn string, fs vfs.IFS) {
+	tmpFp := fn + ".writing"
 	func() {
-		f, err := fs.ReuseForWrite(testSnapshotFilename, tmpFp)
+		// upstream pebble memfs returns write-only files from ReuseForWrite,
+		// rename and open the file for both read and write instead
+		require.NoError(t, fs.Rename(fn, tmpFp))
+		f, err := fs.OpenReadWrite(tmpFp, vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, f.Close())
@@ -129,27 +129,23 @@ func corruptSnapshotPayload(t *testing.T, fs vfs.IFS) {
 		_, err = f.WriteAt(data, int64(HeaderSize+s))
 		require.NoError(t, err)
 	}()
-	if err := fs.Rename(tmpFp, testSnapshotFilename); err != nil {
+	if err := fs.Rename(tmpFp, fn); err != nil {
 		t.Fatalf("%v", err)
 	}
 }
 
 func createTestSnapshotFile(t *testing.T,
-	v SSVersion, fs vfs.IFS) (*SnapshotWriter, []byte, []byte) {
-	return makeTestSnapshotFile(t, testSessionSize, testPayloadSize, v, fs)
+	v SSVersion, fn string, fs vfs.IFS) (*SnapshotWriter, []byte, []byte) {
+	return makeTestSnapshotFile(t, testSessionSize, testPayloadSize, v, fn, fs)
 }
 
 func testCorruptedPayloadWillBeDetected(t *testing.T, v SSVersion, fs vfs.IFS) {
-	defer func() {
-		if err := fs.RemoveAll(testSnapshotFilename); err != nil {
-			t.Fatalf("%v", err)
-		}
-	}()
+	fp := fs.PathJoin(snapshotTestDir(t, fs), "testsnapshot.tmp")
 	func() {
-		createTestSnapshotFile(t, v, fs)
-		corruptSnapshotPayload(t, fs)
+		createTestSnapshotFile(t, v, fp, fs)
+		corruptSnapshotPayload(t, fp, fs)
 		require.Panics(t, func() {
-			r, header, err := NewSnapshotReader(testSnapshotFilename, fs)
+			r, header, err := NewSnapshotReader(fp, fs)
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, r.Close())
@@ -177,14 +173,10 @@ func TestCorruptedPayloadWillBeDetected(t *testing.T) {
 }
 
 func testNormalSnapshotCanPassValidation(t *testing.T, v SSVersion, fs vfs.IFS) {
-	defer func() {
-		if err := fs.RemoveAll(testSnapshotFilename); err != nil {
-			t.Fatalf("%v", err)
-		}
-	}()
+	fp := fs.PathJoin(snapshotTestDir(t, fs), "testsnapshot.tmp")
 	func() {
-		_, sessionData, storeData := createTestSnapshotFile(t, v, fs)
-		r, _, err := NewSnapshotReader(testSnapshotFilename, fs)
+		_, sessionData, storeData := createTestSnapshotFile(t, v, fp, fs)
+		r, _, err := NewSnapshotReader(fp, fs)
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, r.Close())
@@ -231,13 +223,9 @@ func readTestSnapshot(fn string, sz uint64, fs vfs.IFS) ([]byte, error) {
 }
 
 func testSingleBlockSnapshotValidation(t *testing.T, sv SSVersion, fs vfs.IFS) {
-	createTestSnapshotFile(t, sv, fs)
-	defer func() {
-		if err := fs.RemoveAll(testSnapshotFilename); err != nil {
-			t.Fatalf("%v", err)
-		}
-	}()
-	data, err := readTestSnapshot(testSnapshotFilename, 1024*1024, fs)
+	fp := fs.PathJoin(snapshotTestDir(t, fs), "testsnapshot.tmp")
+	createTestSnapshotFile(t, sv, fp, fs)
+	data, err := readTestSnapshot(fp, 1024*1024, fs)
 	require.NoError(t, err)
 	v := NewSnapshotValidator()
 	require.True(t, v.AddChunk(data, 0))
@@ -258,13 +246,9 @@ func TestSingleBlockSnapshotValidation(t *testing.T) {
 }
 
 func testMultiBlockSnapshotValidation(t *testing.T, sv SSVersion, fs vfs.IFS) {
-	makeTestSnapshotFile(t, 1024*1024, 1024*1024*8, sv, fs)
-	defer func() {
-		if err := fs.RemoveAll(testSnapshotFilename); err != nil {
-			t.Fatalf("%v", err)
-		}
-	}()
-	data, err := readTestSnapshot(testSnapshotFilename, 1024*1024*10, fs)
+	fp := fs.PathJoin(snapshotTestDir(t, fs), "testsnapshot.tmp")
+	makeTestSnapshotFile(t, 1024*1024, 1024*1024*8, sv, fp, fs)
+	data, err := readTestSnapshot(fp, 1024*1024*10, fs)
 	require.NoError(t, err)
 	v := NewSnapshotValidator()
 	c1 := data[:1024*1024]
@@ -317,20 +301,16 @@ func TestMustInSameDir(t *testing.T) {
 
 func TestShrinkSnapshot(t *testing.T) {
 	fs := vfs.GetTestFS()
-	snapshotFilename := "test_snapshot_safe_to_delete.data"
-	shrunkFilename := "test_snapshot_safe_to_delete.shrunk"
+	testDir := snapshotTestDir(t, fs)
+	snapshotFilename := fs.PathJoin(testDir, "test_snapshot.data")
+	shrunkFilename := fs.PathJoin(testDir, "test_snapshot.shrunk")
 	writer, err := NewSnapshotWriter(snapshotFilename, pb.NoCompression, fs)
 	require.NoError(t, err)
-	defer func() {
-		if err := fs.RemoveAll(snapshotFilename); err != nil {
-			t.Fatalf("%v", err)
-		}
-	}()
 	sz := make([]byte, 8)
 	binary.LittleEndian.PutUint64(sz, uint64(0))
 	_, err = writer.Write(sz)
 	require.NoError(t, err)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		data := make([]byte, 1024*1024+i*256)
 		_, err := rand.Read(data)
 		require.NoError(t, err)
@@ -344,11 +324,6 @@ func TestShrinkSnapshot(t *testing.T) {
 	require.False(t, shrunk)
 	err = ShrinkSnapshot(snapshotFilename, shrunkFilename, fs)
 	require.NoError(t, err)
-	defer func() {
-		if err := fs.RemoveAll(shrunkFilename); err != nil {
-			t.Fatalf("%v", err)
-		}
-	}()
 	shrunk, err = IsShrunkSnapshotFile(snapshotFilename, fs)
 	require.NoError(t, err)
 	require.False(t, shrunk)
@@ -367,10 +342,11 @@ func TestShrinkSnapshot(t *testing.T) {
 
 func TestReplaceSnapshotFile(t *testing.T) {
 	fs := vfs.GetTestFS()
-	f1name := "test_snapshot_safe_to_delete.data"
-	f2name := "test_snapshot_safe_to_delete.data2"
+	testDir := snapshotTestDir(t, fs)
+	f1name := fs.PathJoin(testDir, "test_snapshot.data")
+	f2name := fs.PathJoin(testDir, "test_snapshot.data2")
 	createFile := func(fn string, sz uint64) {
-		f1, err := fs.Create(fn)
+		f1, err := fs.Create(fn, vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 		data := make([]byte, sz)
 		_, err = rand.Read(data)
@@ -382,14 +358,6 @@ func TestReplaceSnapshotFile(t *testing.T) {
 	}
 	createFile(f1name, 1024)
 	createFile(f2name, 2048)
-	defer func() {
-		if err := fs.RemoveAll(f1name); err != nil {
-			t.Fatalf("%v", err)
-		}
-		if err := fs.RemoveAll(f2name); err != nil {
-			t.Fatalf("%v", err)
-		}
-	}()
 	err := ReplaceSnapshot(f2name, f1name, fs)
 	require.NoError(t, err)
 	_, err = fs.Stat(f2name)
@@ -400,19 +368,15 @@ func TestReplaceSnapshotFile(t *testing.T) {
 }
 
 func testV2PayloadChecksumCanBeRead(t *testing.T, sz uint64, fs vfs.IFS) {
-	defer func() {
-		if err := fs.RemoveAll(testSnapshotFilename); err != nil {
-			t.Fatalf("%v", err)
-		}
-	}()
+	fp := fs.PathJoin(snapshotTestDir(t, fs), "testsnapshot.tmp")
 	func() {
-		makeTestSnapshotFile(t, 0, sz, V2, fs)
-		reader, header, err := NewSnapshotReader(testSnapshotFilename, fs)
+		makeTestSnapshotFile(t, 0, sz, V2, fp, fs)
+		reader, header, err := NewSnapshotReader(fp, fs)
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, reader.Close())
 		}()
-		crc, err := GetV2PayloadChecksum(testSnapshotFilename, fs)
+		crc, err := GetV2PayloadChecksum(fp, fs)
 		require.NoError(t, err)
 		require.True(t, bytes.Equal(crc, header.PayloadChecksum))
 	}()
