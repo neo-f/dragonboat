@@ -49,6 +49,27 @@ func assertSameError(shardID uint64, replicaID uint64, e1 error, e2 error) {
 		dn(shardID, replicaID), e1, e2)
 }
 
+// getMirroredValue queries both LogDB instances with the same getter and
+// panics when their results don't match.
+func getMirroredValue[T any](t *LogDB, name string, shardID uint64,
+	replicaID uint64,
+	get func(raftio.ILogDB, uint64, uint64) (T, error)) (T, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	ov, oe := get(t.odb, shardID, replicaID)
+	nv, ne := get(t.ndb, shardID, replicaID)
+	assertSameError(shardID, replicaID, oe, ne)
+	if oe != nil {
+		var result T
+		return result, oe
+	}
+	if !reflect.DeepEqual(ov, nv) {
+		plog.Panicf("%s conflict %s values, %+v, %+v",
+			dn(shardID, replicaID), name, ov, nv)
+	}
+	return ov, nil
+}
+
 // LogDB is a special LogDB module used for testing purposes.
 type LogDB struct {
 	mu      sync.Mutex
@@ -120,7 +141,7 @@ func (t *LogDB) Name() string {
 func (t *LogDB) Close() error {
 	t.stopper.Stop()
 	if err := t.odb.Close(); err != nil {
-		return nil
+		return err
 	}
 	return t.ndb.Close()
 }
@@ -177,19 +198,8 @@ func (t *LogDB) SaveBootstrapInfo(shardID uint64,
 // GetBootstrapInfo ...
 func (t *LogDB) GetBootstrapInfo(shardID uint64,
 	replicaID uint64) (pb.Bootstrap, error) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	ob, oe := t.odb.GetBootstrapInfo(shardID, replicaID)
-	nb, ne := t.ndb.GetBootstrapInfo(shardID, replicaID)
-	assertSameError(shardID, replicaID, oe, ne)
-	if oe != nil {
-		return pb.Bootstrap{}, oe
-	}
-	if !reflect.DeepEqual(ob, nb) {
-		plog.Panicf("%s conflict GetBootstrapInfo values, %+v, %+v",
-			dn(shardID, replicaID), ob, nb)
-	}
-	return ob, nil
+	return getMirroredValue(t, "GetBootstrapInfo", shardID, replicaID,
+		raftio.ILogDB.GetBootstrapInfo)
 }
 
 // SaveRaftState ...
@@ -274,19 +284,8 @@ func (t *LogDB) SaveSnapshots(updates []pb.Update) error {
 // GetSnapshot ...
 func (t *LogDB) GetSnapshot(shardID uint64,
 	replicaID uint64) (pb.Snapshot, error) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	ov, oe := t.odb.GetSnapshot(shardID, replicaID)
-	nv, ne := t.ndb.GetSnapshot(shardID, replicaID)
-	assertSameError(shardID, replicaID, oe, ne)
-	if oe != nil {
-		return pb.Snapshot{}, oe
-	}
-	if !reflect.DeepEqual(ov, nv) {
-		plog.Panicf("%s conflict snapshot lists, \n%+v \n\n %+v",
-			dn(shardID, replicaID), ov, nv)
-	}
-	return ov, nil
+	return getMirroredValue(t, "GetSnapshot", shardID, replicaID,
+		raftio.ILogDB.GetSnapshot)
 }
 
 // RemoveNodeData ...

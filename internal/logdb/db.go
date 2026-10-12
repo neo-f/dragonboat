@@ -122,7 +122,8 @@ func (r *db) getWriteBatch(ctx IContext) kv.IWriteBatch {
 			wb = r.kvs.GetWriteBatch()
 			ctx.SetWriteBatch(wb)
 		}
-		return wb.(kv.IWriteBatch)
+		iwb, _ := wb.(kv.IWriteBatch)
+		return iwb
 	}
 	return r.kvs.GetWriteBatch()
 }
@@ -164,7 +165,7 @@ func (r *db) readRaftState(shardID uint64,
 func (r *db) getRange(shardID uint64,
 	replicaID uint64, snapshotIndex uint64) (uint64, uint64, error) {
 	maxIndex, err := r.getMaxIndex(shardID, replicaID)
-	if err == raftio.ErrNoSavedLog {
+	if errors.Is(err, raftio.ErrNoSavedLog) {
 		return snapshotIndex, 0, nil
 	}
 	if err != nil {
@@ -191,7 +192,7 @@ func (r *db) saveRaftState(updates []pb.Update, ctx IContext) error {
 				}
 			}
 			if err := r.saveSnapshot(wb, ud); err != nil {
-				return nil
+				return err
 			}
 			r.setMaxIndex(wb, ud, ud.Snapshot.Index, ctx)
 		}
@@ -351,7 +352,7 @@ func (r *db) saveSnapshots(updates []pb.Update) error {
 		if !pb.IsEmptySnapshot(ud.Snapshot) &&
 			r.cs.trySaveSnapshot(ud.ShardID, ud.ReplicaID, ud.Snapshot.Index) {
 			if err := r.saveSnapshot(wb, ud); err != nil {
-				return nil
+				return err
 			}
 			toSave = true
 		}
@@ -499,7 +500,7 @@ func (r *db) iterateEntries(ents []pb.Entry,
 	size uint64, shardID uint64, replicaID uint64, low uint64, high uint64,
 	maxSize uint64) ([]pb.Entry, uint64, error) {
 	maxIndex, err := r.getMaxIndex(shardID, replicaID)
-	if err == raftio.ErrNoSavedLog {
+	if errors.Is(err, raftio.ErrNoSavedLog) {
 		return ents, size, nil
 	}
 	if err != nil {
